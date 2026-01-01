@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Convert map to array
-    let allMovies = Array.from(movieMap.values());
+    const allMovies = Array.from(movieMap.values());
 
     // Filter movies that match genre preferences
     const genreIds = new Set(moodConfig.genrePreferences);

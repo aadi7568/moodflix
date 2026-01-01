@@ -53,10 +53,10 @@ export default function HomePage() {
           className="text-center mb-12 md:mb-16"
         >
           <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-gray-900 dark:text-white mb-4 bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">
-            What's your mood?
+            What&apos;s your mood?
           </h1>
           <p className="text-lg md:text-xl text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
-            Discover the perfect movies and shows that match how you're feeling right now
+            Discover the perfect movies and shows that match how you&apos;re feeling right now
           </p>
         </motion.section>
 
@@ -184,7 +184,7 @@ export default function HomePage() {
             </motion.section>
           )}
         </AnimatePresence>
-      </div>
+    </div>
     </main>
   );
 }

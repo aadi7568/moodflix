@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { Movie, MovieDetails, TMDBResponse } from '../types/movie';
+import { MovieDetails, TMDBResponse } from '../types/movie';
 
 class TMDBService {
   private apiKey: string;
@@ -15,7 +15,7 @@ class TMDBService {
 
   private async makeRequest<T>(
     endpoint: string,
-    params?: Record<string, any>
+    params?: Record<string, string | number>
   ): Promise<T> {
     try {
       const queryParams = {
