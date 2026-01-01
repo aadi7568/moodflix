@@ -2,15 +2,18 @@ import axios from 'axios';
 import { MovieDetails, TMDBResponse } from '../types/movie';
 
 class TMDBService {
-  private apiKey: string;
+  private apiKey: string | null = null;
   private baseUrl = 'https://api.themoviedb.org/3';
 
-  constructor() {
-    const apiKey = process.env.TMDB_API_KEY;
-    if (!apiKey) {
-      throw new Error('TMDB_API_KEY environment variable is not set');
+  private getApiKey(): string {
+    if (!this.apiKey) {
+      const apiKey = process.env.TMDB_API_KEY;
+      if (!apiKey) {
+        throw new Error('TMDB_API_KEY environment variable is not set');
+      }
+      this.apiKey = apiKey;
     }
-    this.apiKey = apiKey;
+    return this.apiKey;
   }
 
   private async makeRequest<T>(
@@ -20,7 +23,7 @@ class TMDBService {
     try {
       const queryParams = {
         ...params,
-        api_key: this.apiKey,
+        api_key: this.getApiKey(),
       };
 
       const response = await axios.get<T>(`${this.baseUrl}${endpoint}`, {
@@ -70,5 +73,20 @@ class TMDBService {
   }
 }
 
-export const tmdbService = new TMDBService();
+// Lazy initialization to avoid errors during build time
+let tmdbServiceInstance: TMDBService | null = null;
+
+export const getTmdbService = (): TMDBService => {
+  if (!tmdbServiceInstance) {
+    tmdbServiceInstance = new TMDBService();
+  }
+  return tmdbServiceInstance;
+};
+
+// Export singleton for backward compatibility
+export const tmdbService = new Proxy({} as TMDBService, {
+  get(_target, prop) {
+    return getTmdbService()[prop as keyof TMDBService];
+  },
+});
 
