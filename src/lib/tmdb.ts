@@ -12,12 +12,14 @@ class TMDBService {
         throw new Error('TMDB_API_KEY environment variable is not set');
       }
       // Trim whitespace that might have been accidentally added
-      this.apiKey = apiKey.trim();
+      const trimmedKey = apiKey.trim();
       
       // Validate API key format (should be a long string)
-      if (this.apiKey.length < 10) {
-        throw new Error('TMDB_API_KEY appears to be invalid (too short)');
+      if (!trimmedKey || trimmedKey.length < 10) {
+        throw new Error(`TMDB_API_KEY appears to be invalid. Length: ${trimmedKey?.length || 0}`);
       }
+      
+      this.apiKey = trimmedKey;
     }
     return this.apiKey;
   }
@@ -29,11 +31,25 @@ class TMDBService {
     try {
       const apiKey = this.getApiKey();
       
+      // Validate API key is not null/undefined
+      if (!apiKey || typeof apiKey !== 'string') {
+        throw new Error('TMDB_API_KEY is invalid or not set properly');
+      }
+      
       // Trim the API key in case there's whitespace
       const trimmedApiKey = apiKey.trim();
       
+      // Validate trimmed key
+      if (!trimmedApiKey || trimmedApiKey.length < 10) {
+        throw new Error(`TMDB_API_KEY is invalid. Length: ${trimmedApiKey?.length || 0}`);
+      }
+      
       // Log API key status (first 4 chars only for security)
-      console.log('Using TMDB API key:', trimmedApiKey.substring(0, 4) + '...' + trimmedApiKey.substring(trimmedApiKey.length - 4));
+      if (trimmedApiKey && trimmedApiKey.length >= 8) {
+        console.log('Using TMDB API key:', trimmedApiKey.substring(0, 4) + '...' + trimmedApiKey.substring(trimmedApiKey.length - 4));
+      } else {
+        console.log('Using TMDB API key: [invalid - too short]');
+      }
       
       const queryParams = {
         ...params,
@@ -50,30 +66,50 @@ class TMDBService {
 
       return response.data;
     } catch (error) {
+      console.error('TMDB API Request Error:', {
+        errorType: error instanceof Error ? error.constructor.name : typeof error,
+        errorMessage: error instanceof Error ? error.message : String(error),
+        isAxiosError: axios.isAxiosError(error),
+      });
+      
       if (axios.isAxiosError(error)) {
         const status = error.response?.status;
         const statusText = error.response?.statusText;
-        const errorMessage = error.response?.data 
-          ? JSON.stringify(error.response.data)
+        const responseData = error.response?.data;
+        const errorMessage = responseData 
+          ? (typeof responseData === 'string' ? responseData : JSON.stringify(responseData))
           : error.message;
         
         console.error('TMDB API Error Details:', {
-          status,
-          statusText,
+          status: status || 'no status',
+          statusText: statusText || 'no statusText',
           message: errorMessage,
-          url: error.config?.url,
-          params: error.config?.params,
+          url: error.config?.url || 'no url',
+          method: error.config?.method || 'no method',
+          params: error.config?.params || 'no params',
+          hasResponse: !!error.response,
+          hasRequest: !!error.request,
         });
         
         if (status === 401) {
-          throw new Error(`TMDB API authentication failed (401). Please verify your TMDB_API_KEY is correct and has no extra spaces. Status: ${statusText}`);
+          throw new Error(`TMDB API authentication failed (401). Please verify your TMDB_API_KEY is correct and has no extra spaces. Status: ${statusText || 'Unknown'}`);
         }
         
+        if (status) {
+          throw new Error(
+            `TMDB API error: ${status} - ${statusText || errorMessage}`
+          );
+        }
+        
+        // Network error or no response
         throw new Error(
-          `TMDB API error: ${status} - ${statusText || errorMessage}`
+          `TMDB API request failed: ${errorMessage || 'Network error or invalid response'}`
         );
       }
-      throw new Error(`Failed to make request to TMDB API: ${error}`);
+      
+      // Non-axios error
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to make request to TMDB API: ${errorMsg}`);
     }
   }
 
