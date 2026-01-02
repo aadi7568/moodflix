@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import MoodSelector from '../components/MoodSelector';
 import MovieCard from '../components/MovieCard';
@@ -12,6 +12,7 @@ export default function HomePage() {
   const [recommendations, setRecommendations] = useState<Movie[] | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const recommendationsRef = useRef<HTMLDivElement>(null);
 
   const handleMoodSelect = async (mood: MoodType) => {
     setSelectedMood(mood);
@@ -45,6 +46,14 @@ export default function HomePage() {
         setRecommendations([]);
       } else {
         setRecommendations(movies);
+        
+        // Scroll to recommendations after a short delay to ensure DOM is updated
+        setTimeout(() => {
+          recommendationsRef.current?.scrollIntoView({
+            behavior: 'smooth',
+            block: 'start',
+          });
+        }, 100);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unexpected error occurred');
@@ -106,6 +115,7 @@ export default function HomePage() {
 
           {error && (
             <motion.section
+              ref={recommendationsRef}
               key="error"
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -149,6 +159,7 @@ export default function HomePage() {
 
           {recommendations && recommendations.length > 0 && (
             <motion.section
+              ref={recommendationsRef}
               key="recommendations"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
