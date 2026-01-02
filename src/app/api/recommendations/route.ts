@@ -59,35 +59,56 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Check if API key is available
+    const hasApiKey = !!process.env.TMDB_API_KEY;
+    console.log('TMDB_API_KEY available:', hasApiKey);
+    
+    if (!hasApiKey) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'TMDB_API_KEY environment variable is not set. Please add it in Vercel project settings.',
+          movies: [],
+        },
+        { status: 200 }
+      );
+    }
+
     // Fetch movies by genre preferences
     let genreMovies: Movie[] = [];
+    let genreError: string | null = null;
     try {
       const genreResponse = await tmdbService.getMoviesByGenres(
         moodConfig.genrePreferences,
         1
       );
       genreMovies = genreResponse.results || [];
-      console.log(`Fetched ${genreMovies.length} movies by genres`);
+      console.log(`Fetched ${genreMovies.length} movies by genres for mood: ${moodType}`);
     } catch (error) {
-      console.error('Error fetching movies by genres:', error);
+      genreError = error instanceof Error ? error.message : String(error);
+      console.error('Error fetching movies by genres:', genreError);
       // Continue with trending movies if genre fetch fails
     }
 
     // Fetch trending movies
     let trendingMovies: Movie[] = [];
+    let trendingError: string | null = null;
     try {
       const trendingResponse = await tmdbService.getTrending('movie', 'day');
       trendingMovies = trendingResponse.results || [];
       console.log(`Fetched ${trendingMovies.length} trending movies`);
     } catch (error) {
-      console.error('Error fetching trending movies:', error);
+      trendingError = error instanceof Error ? error.message : String(error);
+      console.error('Error fetching trending movies:', trendingError);
       // If both fail, try to get at least some trending content
       try {
         const fallbackResponse = await tmdbService.getTrending('all', 'week');
         trendingMovies = fallbackResponse.results || [];
         console.log(`Fallback: Fetched ${trendingMovies.length} trending movies (week)`);
       } catch (fallbackError) {
-        console.error('Fallback trending fetch also failed:', fallbackError);
+        const fallbackErrorMsg = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+        console.error('Fallback trending fetch also failed:', fallbackErrorMsg);
+        trendingError = fallbackErrorMsg;
       }
     }
 
@@ -124,18 +145,24 @@ export async function POST(request: NextRequest) {
     
     // If still no movies, return error with helpful message (use 200 status so frontend can handle it)
     if (moviesToSort.length === 0) {
+      const errorMessage = genreError || trendingError 
+        ? `TMDB API error: ${genreError || trendingError}. Please verify your TMDB_API_KEY is valid.`
+        : 'No movies found. This might be a temporary issue. Please try again.';
+      
       return NextResponse.json(
         {
           success: false,
-          error: 'No movies found. Please check your TMDB_API_KEY environment variable is set correctly in Vercel.',
+          error: errorMessage,
           movies: [],
-          debug: process.env.NODE_ENV === 'development' ? {
+          debug: {
             genreMoviesCount: genreMovies.length,
             trendingMoviesCount: trendingMovies.length,
             allMoviesCount: allMovies.length,
             relevantMoviesCount: relevantMovies.length,
             hasApiKey: !!process.env.TMDB_API_KEY,
-          } : undefined,
+            genreError: genreError || null,
+            trendingError: trendingError || null,
+          },
         },
         { status: 200 }
       );
