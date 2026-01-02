@@ -59,56 +59,32 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if API key is available
-    const hasApiKey = !!process.env.TMDB_API_KEY;
-    console.log('TMDB_API_KEY available:', hasApiKey);
-    
-    if (!hasApiKey) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'TMDB_API_KEY environment variable is not set. Please add it in Vercel project settings.',
-          movies: [],
-        },
-        { status: 200 }
-      );
-    }
-
     // Fetch movies by genre preferences
     let genreMovies: Movie[] = [];
-    let genreError: string | null = null;
     try {
       const genreResponse = await tmdbService.getMoviesByGenres(
         moodConfig.genrePreferences,
         1
       );
       genreMovies = genreResponse.results || [];
-      console.log(`Fetched ${genreMovies.length} movies by genres for mood: ${moodType}`);
     } catch (error) {
-      genreError = error instanceof Error ? error.message : String(error);
-      console.error('Error fetching movies by genres:', genreError);
+      console.error('Error fetching movies by genres:', error);
       // Continue with trending movies if genre fetch fails
     }
 
     // Fetch trending movies
     let trendingMovies: Movie[] = [];
-    let trendingError: string | null = null;
     try {
       const trendingResponse = await tmdbService.getTrending('movie', 'day');
       trendingMovies = trendingResponse.results || [];
-      console.log(`Fetched ${trendingMovies.length} trending movies`);
     } catch (error) {
-      trendingError = error instanceof Error ? error.message : String(error);
-      console.error('Error fetching trending movies:', trendingError);
+      console.error('Error fetching trending movies:', error);
       // If both fail, try to get at least some trending content
       try {
         const fallbackResponse = await tmdbService.getTrending('all', 'week');
         trendingMovies = fallbackResponse.results || [];
-        console.log(`Fallback: Fetched ${trendingMovies.length} trending movies (week)`);
       } catch (fallbackError) {
-        const fallbackErrorMsg = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
-        console.error('Fallback trending fetch also failed:', fallbackErrorMsg);
-        trendingError = fallbackErrorMsg;
+        console.error('Fallback trending fetch also failed:', fallbackError);
       }
     }
 
@@ -131,38 +107,24 @@ export async function POST(request: NextRequest) {
 
     // Convert map to array
     const allMovies = Array.from(movieMap.values());
-    console.log(`Total unique movies: ${allMovies.length}`);
 
     // Filter movies that match genre preferences
     const genreIds = new Set(moodConfig.genrePreferences);
     const relevantMovies = allMovies.filter((movie) =>
       movie.genre_ids?.some((id) => genreIds.has(id))
     );
-    console.log(`Movies matching genre preferences: ${relevantMovies.length}`);
 
-    // If we have relevant movies, use them; otherwise use all movies (even if empty, we'll handle it)
+    // If we have relevant movies, use them; otherwise use all movies
     const moviesToSort = relevantMovies.length > 0 ? relevantMovies : allMovies;
     
-    // If still no movies, return error with helpful message (use 200 status so frontend can handle it)
+    // If still no movies, return error
     if (moviesToSort.length === 0) {
-      const errorMessage = genreError || trendingError 
-        ? `TMDB API error: ${genreError || trendingError}. Please verify your TMDB_API_KEY is valid.`
-        : 'No movies found. This might be a temporary issue. Please try again.';
-      
+      console.error('No movies found for mood:', moodType);
       return NextResponse.json(
         {
           success: false,
-          error: errorMessage,
+          error: 'No recommendations found. Please try again or select a different mood.',
           movies: [],
-          debug: {
-            genreMoviesCount: genreMovies.length,
-            trendingMoviesCount: trendingMovies.length,
-            allMoviesCount: allMovies.length,
-            relevantMoviesCount: relevantMovies.length,
-            hasApiKey: !!process.env.TMDB_API_KEY,
-            genreError: genreError || null,
-            trendingError: trendingError || null,
-          },
         },
         { status: 200 }
       );

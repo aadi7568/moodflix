@@ -32,17 +32,17 @@ export default function HomePage() {
       const data = await response.json();
       
       if (!response.ok) {
-        throw new Error(data.error || `Failed to fetch recommendations: ${response.statusText}`);
+        throw new Error('Unable to load recommendations. Please try again.');
       }
       
       if (!data.success) {
-        throw new Error(data.error || 'Failed to get recommendations');
+        throw new Error('Unable to load recommendations. Please try again.');
       }
       
       const movies = data.movies || [];
       
       if (movies.length === 0) {
-        setError(data.error || 'No movies found. Please check your TMDB_API_KEY is set in Vercel environment variables.');
+        setError('No recommendations found. Please try again or select a different mood.');
         setRecommendations([]);
       } else {
         setRecommendations(movies);
@@ -56,8 +56,8 @@ export default function HomePage() {
         }, 100);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An unexpected error occurred');
       console.error('Error fetching recommendations:', err);
+      setError('Unable to load recommendations. Please try again.');
     } finally {
       setLoading(false);
     }
