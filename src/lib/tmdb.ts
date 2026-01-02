@@ -46,10 +46,16 @@ class TMDBService {
       const apiKey = this.getApiKey();
       
       // Log API key status (first 4 chars only for security)
-      if (apiKey && apiKey.length >= 8) {
-        console.log('Using TMDB API key:', apiKey.substring(0, 4) + '...' + apiKey.substring(apiKey.length - 4));
+      if (apiKey && typeof apiKey === 'string' && apiKey.length >= 8) {
+        const start = apiKey.substring(0, 4);
+        const end = apiKey.substring(Math.max(0, apiKey.length - 4));
+        console.log('Using TMDB API key:', `${start}...${end}`);
       } else {
-        console.log('Using TMDB API key: [invalid - too short]');
+        console.log('Using TMDB API key: [invalid - too short or null]', { 
+          hasKey: !!apiKey, 
+          type: typeof apiKey,
+          length: apiKey?.length 
+        });
       }
       
       const queryParams = {
@@ -156,10 +162,12 @@ export const getTmdbService = (): TMDBService => {
   return tmdbServiceInstance;
 };
 
-// Export singleton for backward compatibility
-export const tmdbService = new Proxy({} as TMDBService, {
-  get(_target, prop) {
-    return getTmdbService()[prop as keyof TMDBService];
-  },
-});
+// Export singleton instance directly (simpler and more reliable than Proxy)
+export const tmdbService = (() => {
+  // Create instance on first access
+  if (!tmdbServiceInstance) {
+    tmdbServiceInstance = new TMDBService();
+  }
+  return tmdbServiceInstance;
+})();
 
