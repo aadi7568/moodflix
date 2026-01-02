@@ -28,12 +28,11 @@ export default function HomePage() {
         body: JSON.stringify({ mood }),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `Failed to fetch recommendations: ${response.statusText}`);
-      }
-
       const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || `Failed to fetch recommendations: ${response.statusText}`);
+      }
       
       if (!data.success) {
         throw new Error(data.error || 'Failed to get recommendations');
@@ -42,7 +41,7 @@ export default function HomePage() {
       const movies = data.movies || [];
       
       if (movies.length === 0) {
-        setError('No movies found. Please try again or select a different mood.');
+        setError(data.error || 'No movies found. Please check your TMDB_API_KEY is set in Vercel environment variables.');
         setRecommendations([]);
       } else {
         setRecommendations(movies);

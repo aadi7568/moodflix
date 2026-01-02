@@ -122,20 +122,22 @@ export async function POST(request: NextRequest) {
     // If we have relevant movies, use them; otherwise use all movies (even if empty, we'll handle it)
     const moviesToSort = relevantMovies.length > 0 ? relevantMovies : allMovies;
     
-    // If still no movies, return error with helpful message
+    // If still no movies, return error with helpful message (use 200 status so frontend can handle it)
     if (moviesToSort.length === 0) {
       return NextResponse.json(
         {
           success: false,
-          error: 'No movies found. Please check your TMDB_API_KEY and try again.',
+          error: 'No movies found. Please check your TMDB_API_KEY environment variable is set correctly in Vercel.',
+          movies: [],
           debug: process.env.NODE_ENV === 'development' ? {
             genreMoviesCount: genreMovies.length,
             trendingMoviesCount: trendingMovies.length,
             allMoviesCount: allMovies.length,
             relevantMoviesCount: relevantMovies.length,
+            hasApiKey: !!process.env.TMDB_API_KEY,
           } : undefined,
         },
-        { status: 404 }
+        { status: 200 }
       );
     }
 
