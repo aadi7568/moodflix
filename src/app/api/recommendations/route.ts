@@ -67,6 +67,7 @@ export async function POST(request: NextRequest) {
         1
       );
       genreMovies = genreResponse.results || [];
+      console.log(`Fetched ${genreMovies.length} movies by genres`);
     } catch (error) {
       console.error('Error fetching movies by genres:', error);
       // Continue with trending movies if genre fetch fails
@@ -75,10 +76,19 @@ export async function POST(request: NextRequest) {
     // Fetch trending movies
     let trendingMovies: Movie[] = [];
     try {
-      const trendingResponse = await tmdbService.getTrending('all', 'day');
+      const trendingResponse = await tmdbService.getTrending('movie', 'day');
       trendingMovies = trendingResponse.results || [];
+      console.log(`Fetched ${trendingMovies.length} trending movies`);
     } catch (error) {
       console.error('Error fetching trending movies:', error);
+      // If both fail, try to get at least some trending content
+      try {
+        const fallbackResponse = await tmdbService.getTrending('all', 'week');
+        trendingMovies = fallbackResponse.results || [];
+        console.log(`Fallback: Fetched ${trendingMovies.length} trending movies (week)`);
+      } catch (fallbackError) {
+        console.error('Fallback trending fetch also failed:', fallbackError);
+      }
     }
 
     // Combine and deduplicate movies by ID
@@ -100,15 +110,34 @@ export async function POST(request: NextRequest) {
 
     // Convert map to array
     const allMovies = Array.from(movieMap.values());
+    console.log(`Total unique movies: ${allMovies.length}`);
 
     // Filter movies that match genre preferences
     const genreIds = new Set(moodConfig.genrePreferences);
     const relevantMovies = allMovies.filter((movie) =>
       movie.genre_ids?.some((id) => genreIds.has(id))
     );
+    console.log(`Movies matching genre preferences: ${relevantMovies.length}`);
 
-    // If we have relevant movies, use them; otherwise use all movies
+    // If we have relevant movies, use them; otherwise use all movies (even if empty, we'll handle it)
     const moviesToSort = relevantMovies.length > 0 ? relevantMovies : allMovies;
+    
+    // If still no movies, return error with helpful message
+    if (moviesToSort.length === 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'No movies found. Please check your TMDB_API_KEY and try again.',
+          debug: process.env.NODE_ENV === 'development' ? {
+            genreMoviesCount: genreMovies.length,
+            trendingMoviesCount: trendingMovies.length,
+            allMoviesCount: allMovies.length,
+            relevantMoviesCount: relevantMovies.length,
+          } : undefined,
+        },
+        { status: 404 }
+      );
+    }
 
     // Sort by vote_average (descending) and then by vote_count (descending)
     const sortedMovies = moviesToSort.sort((a, b) => {

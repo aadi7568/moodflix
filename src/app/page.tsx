@@ -29,11 +29,24 @@ export default function HomePage() {
       });
 
       if (!response.ok) {
-        throw new Error(`Failed to fetch recommendations: ${response.statusText}`);
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to fetch recommendations: ${response.statusText}`);
       }
 
       const data = await response.json();
-      setRecommendations(data.movies || []);
+      
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to get recommendations');
+      }
+      
+      const movies = data.movies || [];
+      
+      if (movies.length === 0) {
+        setError('No movies found. Please try again or select a different mood.');
+        setRecommendations([]);
+      } else {
+        setRecommendations(movies);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unexpected error occurred');
       console.error('Error fetching recommendations:', err);
