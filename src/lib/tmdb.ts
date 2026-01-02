@@ -11,7 +11,13 @@ class TMDBService {
       if (!apiKey) {
         throw new Error('TMDB_API_KEY environment variable is not set');
       }
-      this.apiKey = apiKey;
+      // Trim whitespace that might have been accidentally added
+      this.apiKey = apiKey.trim();
+      
+      // Validate API key format (should be a long string)
+      if (this.apiKey.length < 10) {
+        throw new Error('TMDB_API_KEY appears to be invalid (too short)');
+      }
     }
     return this.apiKey;
   }
@@ -21,20 +27,50 @@ class TMDBService {
     params?: Record<string, string | number>
   ): Promise<T> {
     try {
+      const apiKey = this.getApiKey();
+      
+      // Trim the API key in case there's whitespace
+      const trimmedApiKey = apiKey.trim();
+      
+      // Log API key status (first 4 chars only for security)
+      console.log('Using TMDB API key:', trimmedApiKey.substring(0, 4) + '...' + trimmedApiKey.substring(trimmedApiKey.length - 4));
+      
       const queryParams = {
         ...params,
-        api_key: this.getApiKey(),
+        api_key: trimmedApiKey,
       };
 
-      const response = await axios.get<T>(`${this.baseUrl}${endpoint}`, {
+      const fullUrl = `${this.baseUrl}${endpoint}`;
+      console.log('Making request to:', fullUrl);
+      console.log('Query params keys:', Object.keys(queryParams));
+
+      const response = await axios.get<T>(fullUrl, {
         params: queryParams,
       });
 
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
+        const status = error.response?.status;
+        const statusText = error.response?.statusText;
+        const errorMessage = error.response?.data 
+          ? JSON.stringify(error.response.data)
+          : error.message;
+        
+        console.error('TMDB API Error Details:', {
+          status,
+          statusText,
+          message: errorMessage,
+          url: error.config?.url,
+          params: error.config?.params,
+        });
+        
+        if (status === 401) {
+          throw new Error(`TMDB API authentication failed (401). Please verify your TMDB_API_KEY is correct and has no extra spaces. Status: ${statusText}`);
+        }
+        
         throw new Error(
-          `TMDB API error: ${error.response?.status} - ${error.response?.statusText || error.message}`
+          `TMDB API error: ${status} - ${statusText || errorMessage}`
         );
       }
       throw new Error(`Failed to make request to TMDB API: ${error}`);
