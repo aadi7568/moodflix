@@ -8,18 +8,31 @@ class TMDBService {
   private getApiKey(): string {
     if (!this.apiKey) {
       const apiKey = process.env.TMDB_API_KEY;
+      console.log('Reading TMDB_API_KEY from env:', {
+        exists: !!apiKey,
+        type: typeof apiKey,
+        length: apiKey?.length || 0,
+        firstChars: apiKey ? apiKey.substring(0, 4) + '...' : 'N/A',
+      });
+      
       if (!apiKey) {
         throw new Error('TMDB_API_KEY environment variable is not set');
       }
-      // Trim whitespace that might have been accidentally added
-      const trimmedKey = apiKey.trim();
       
-      // Validate API key format (should be a long string)
-      if (!trimmedKey || trimmedKey.length < 10) {
-        throw new Error(`TMDB_API_KEY appears to be invalid. Length: ${trimmedKey?.length || 0}`);
+      // Trim whitespace that might have been accidentally added
+      const trimmedKey = typeof apiKey === 'string' ? apiKey.trim() : String(apiKey).trim();
+      
+      // Validate API key format (should be a long string, typically 32+ chars)
+      if (!trimmedKey) {
+        throw new Error('TMDB_API_KEY is empty after trimming');
+      }
+      
+      if (trimmedKey.length < 10) {
+        throw new Error(`TMDB_API_KEY appears to be invalid. Length: ${trimmedKey.length} (expected at least 10 characters)`);
       }
       
       this.apiKey = trimmedKey;
+      console.log('API key validated and stored. Length:', this.apiKey.length);
     }
     return this.apiKey;
   }
@@ -29,31 +42,19 @@ class TMDBService {
     params?: Record<string, string | number>
   ): Promise<T> {
     try {
+      // getApiKey() already validates and trims, so we can use it directly
       const apiKey = this.getApiKey();
       
-      // Validate API key is not null/undefined
-      if (!apiKey || typeof apiKey !== 'string') {
-        throw new Error('TMDB_API_KEY is invalid or not set properly');
-      }
-      
-      // Trim the API key in case there's whitespace
-      const trimmedApiKey = apiKey.trim();
-      
-      // Validate trimmed key
-      if (!trimmedApiKey || trimmedApiKey.length < 10) {
-        throw new Error(`TMDB_API_KEY is invalid. Length: ${trimmedApiKey?.length || 0}`);
-      }
-      
       // Log API key status (first 4 chars only for security)
-      if (trimmedApiKey && trimmedApiKey.length >= 8) {
-        console.log('Using TMDB API key:', trimmedApiKey.substring(0, 4) + '...' + trimmedApiKey.substring(trimmedApiKey.length - 4));
+      if (apiKey && apiKey.length >= 8) {
+        console.log('Using TMDB API key:', apiKey.substring(0, 4) + '...' + apiKey.substring(apiKey.length - 4));
       } else {
         console.log('Using TMDB API key: [invalid - too short]');
       }
       
       const queryParams = {
         ...params,
-        api_key: trimmedApiKey,
+        api_key: apiKey,
       };
 
       const fullUrl = `${this.baseUrl}${endpoint}`;
