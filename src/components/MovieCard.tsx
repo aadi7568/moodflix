@@ -26,9 +26,11 @@ export default function MovieCard({ movie }: MovieCardProps) {
 
   return (
     <motion.div
-      className="group relative bg-white dark:bg-gray-800 rounded-xl overflow-hidden shadow-md hover:shadow-2xl transition-shadow duration-300"
+      className="group relative bg-white dark:bg-gray-800 rounded-xl overflow-hidden shadow-md hover:shadow-2xl transition-all duration-300 focus-ring"
       whileHover={{ scale: 1.03, y: -8 }}
+      whileFocus={{ scale: 1.02, y: -4 }}
       transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+      tabIndex={0}
     >
       {/* Poster Image */}
       <div className="relative w-full aspect-[2/3] bg-gray-200 dark:bg-gray-700 overflow-hidden">
@@ -41,7 +43,7 @@ export default function MovieCard({ movie }: MovieCardProps) {
             )}
             <Image
               src={posterUrl}
-              alt={title}
+              alt={`${title} poster`}
               fill
               className={`
                 object-cover transition-opacity duration-300
@@ -53,7 +55,10 @@ export default function MovieCard({ movie }: MovieCardProps) {
                 setImageError(true);
                 setImageLoading(false);
               }}
-              sizes="(max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
+              sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, (max-width: 1280px) 33vw, 25vw"
+              priority={false}
+              loading="lazy"
+              quality={85}
             />
             {/* Gradient overlay for text readability */}
             <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />

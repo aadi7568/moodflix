@@ -5,9 +5,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Film } from 'lucide-react';
 import MoodSelector from '../components/MoodSelector';
 import MovieCard from '../components/MovieCard';
-import LoadingSpinner from '../components/LoadingSpinner';
+import MovieCardSkeleton from '../components/MovieCardSkeleton';
 import ErrorMessage from '../components/ErrorMessage';
 import EmptyState from '../components/EmptyState';
+import PageTransition from '../components/PageTransition';
 import { MoodType } from '../types/mood';
 import { Movie } from '../types/movie';
 
@@ -93,21 +94,38 @@ export default function HomePage() {
   };
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
-      <div className="container mx-auto px-4 py-8 md:py-12 lg:py-16">
+    <PageTransition>
+      <main className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-gray-800 dark:via-gray-800 dark:to-gray-900 relative overflow-hidden">
+        {/* Animated gradient background elements */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-300 dark:bg-blue-900 rounded-full mix-blend-multiply dark:mix-blend-soft-light filter blur-3xl opacity-30 animate-blob" />
+          <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-purple-300 dark:bg-purple-900 rounded-full mix-blend-multiply dark:mix-blend-soft-light filter blur-3xl opacity-30 animate-blob animation-delay-2000" />
+          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-80 h-80 bg-pink-300 dark:bg-pink-900 rounded-full mix-blend-multiply dark:mix-blend-soft-light filter blur-3xl opacity-30 animate-blob animation-delay-4000" />
+        </div>
+        <div className="container mx-auto px-4 py-8 md:py-12 lg:py-16 relative z-10">
         {/* Hero Section */}
         <motion.section
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
+          transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
           className="text-center mb-12 md:mb-16"
         >
-          <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-gray-900 dark:text-white mb-4 bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">
+          <motion.h1
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.6, delay: 0.1 }}
+            className="text-4xl md:text-5xl lg:text-6xl font-bold text-gray-900 dark:text-white mb-4 bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent"
+          >
             What&apos;s your mood?
-          </h1>
-          <p className="text-lg md:text-xl text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
+          </motion.h1>
+          <motion.p
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.2 }}
+            className="text-lg md:text-xl text-gray-600 dark:text-gray-300 max-w-2xl mx-auto"
+          >
             Discover the perfect movies and shows that match how you&apos;re feeling right now
-          </p>
+          </motion.p>
         </motion.section>
 
         {/* Mood Selector Section */}
@@ -133,11 +151,17 @@ export default function HomePage() {
               exit={{ opacity: 0 }}
               className="mt-12"
             >
-              <LoadingSpinner
-                size="lg"
-                message="Finding the perfect recommendations for you..."
-                className="py-16"
-              />
+              <div className="mb-8">
+                <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-2">
+                  Finding Your Recommendations
+                </h2>
+                <p className="text-gray-600 dark:text-gray-400">
+                  Searching for the perfect matches...
+                </p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                <MovieCardSkeleton count={8} />
+              </div>
             </motion.section>
           )}
 
@@ -169,27 +193,56 @@ export default function HomePage() {
               transition={{ duration: 0.5 }}
               className="mt-12"
             >
-              <div className="mb-8">
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4 }}
+                className="mb-8"
+              >
                 <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-2">
                   Your Recommendations
                 </h2>
                 <p className="text-gray-600 dark:text-gray-400">
                   We found {recommendations.length} perfect match{recommendations.length !== 1 ? 'es' : ''} for your mood
                 </p>
-              </div>
+              </motion.div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                {recommendations.map((movie, index) => (
+              <motion.div
+                className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
+                variants={{
+                  hidden: { opacity: 0 },
+                  show: {
+                    opacity: 1,
+                    transition: {
+                      staggerChildren: 0.1,
+                      delayChildren: 0.2,
+                    },
+                  },
+                }}
+                initial="hidden"
+                animate="show"
+              >
+                {recommendations.map((movie) => (
                   <motion.div
                     key={movie.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.4, delay: index * 0.1 }}
+                    variants={{
+                      hidden: { opacity: 0, y: 30, scale: 0.9 },
+                      show: {
+                        opacity: 1,
+                        y: 0,
+                        scale: 1,
+                        transition: {
+                          type: 'spring',
+                          stiffness: 100,
+                          damping: 15,
+                        },
+                      },
+                    }}
                   >
                     <MovieCard movie={movie} />
                   </motion.div>
                 ))}
-              </div>
+              </motion.div>
             </motion.section>
           )}
 
@@ -211,7 +264,8 @@ export default function HomePage() {
             </motion.section>
           )}
         </AnimatePresence>
-    </div>
-    </main>
+        </div>
+      </main>
+    </PageTransition>
   );
 }

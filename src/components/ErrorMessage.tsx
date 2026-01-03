@@ -46,9 +46,10 @@ export default function ErrorMessage({
       {onRetry && (
         <motion.button
           whileHover={{ scale: 1.05 }}
+          whileFocus={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
           onClick={onRetry}
-          className="px-6 py-2 bg-red-500 hover:bg-red-600 dark:bg-red-600 dark:hover:bg-red-700 text-white rounded-lg transition-colors font-medium"
+          className="px-6 py-2 bg-red-500 hover:bg-red-600 dark:bg-red-600 dark:hover:bg-red-700 text-white rounded-lg transition-all duration-200 font-medium focus-ring focus:ring-red-500"
         >
           {retryLabel}
         </motion.button>

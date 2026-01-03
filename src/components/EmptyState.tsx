@@ -48,9 +48,10 @@ export default function EmptyState({
       {onAction && actionLabel && (
         <motion.button
           whileHover={{ scale: 1.05 }}
+          whileFocus={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
           onClick={onAction}
-          className="px-6 py-2 bg-blue-500 hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700 text-white rounded-lg transition-colors font-medium"
+          className="px-6 py-2 bg-blue-500 hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700 text-white rounded-lg transition-all duration-200 font-medium focus-ring focus:ring-blue-500"
         >
           {actionLabel}
         </motion.button>

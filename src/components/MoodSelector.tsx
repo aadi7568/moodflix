@@ -42,17 +42,21 @@ export default function MoodSelector({
               onClick={() => onMoodSelect(mood.id)}
               className={cn(
                 'relative p-6 rounded-xl bg-white dark:bg-gray-800',
-                'border-2 transition-all duration-200',
+                'border-2 transition-all duration-300',
                 'flex flex-col items-center justify-center gap-3',
-                'shadow-md hover:shadow-xl',
-                'focus:outline-none focus:ring-2 focus:ring-offset-2',
+                'shadow-md hover:shadow-xl hover:shadow-blue-500/20 dark:hover:shadow-blue-500/10',
+                'focus-ring',
+                'hover:scale-105 hover:-translate-y-1',
                 isSelected
-                  ? borderColorMap[mood.color] || 'border-gray-500'
-                  : 'border-gray-200 dark:border-gray-700 border-opacity-50 hover:border-opacity-100'
+                  ? `${borderColorMap[mood.color] || 'border-gray-500'} ring-2 ring-offset-2 ring-blue-500/50`
+                  : 'border-gray-200 dark:border-gray-700 border-opacity-50 hover:border-opacity-100 hover:border-blue-300 dark:hover:border-blue-600'
               )}
               whileHover={{ scale: 1.05, y: -4 }}
+              whileFocus={{ scale: 1.03, y: -2 }}
               whileTap={{ scale: 0.95 }}
               transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+              aria-pressed={isSelected}
+              aria-label={`Select ${mood.label} mood`}
             >
               {/* Selected indicator */}
               {isSelected && (
