@@ -24,7 +24,7 @@ const spinnerVariants = {
 const spinnerTransition = {
   duration: 1,
   repeat: Infinity,
-  ease: 'linear',
+  ease: [0, 0, 1, 1] as const, // Linear easing
 };
 
 export default function LoadingSpinner({
