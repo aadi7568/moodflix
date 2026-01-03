@@ -2,8 +2,12 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Film } from 'lucide-react';
 import MoodSelector from '../components/MoodSelector';
 import MovieCard from '../components/MovieCard';
+import LoadingSpinner from '../components/LoadingSpinner';
+import ErrorMessage from '../components/ErrorMessage';
+import EmptyState from '../components/EmptyState';
 import { MoodType } from '../types/mood';
 import { Movie } from '../types/movie';
 
@@ -129,12 +133,11 @@ export default function HomePage() {
               exit={{ opacity: 0 }}
               className="mt-12"
             >
-              <div className="flex flex-col items-center justify-center py-16">
-                <div className="w-16 h-16 border-4 border-gray-300 dark:border-gray-600 border-t-blue-500 rounded-full animate-spin mb-4" />
-                <p className="text-lg text-gray-600 dark:text-gray-400">
-                  Finding the perfect recommendations for you...
-                </p>
-              </div>
+              <LoadingSpinner
+                size="lg"
+                message="Finding the perfect recommendations for you..."
+                className="py-16"
+              />
             </motion.section>
           )}
 
@@ -142,43 +145,17 @@ export default function HomePage() {
             <motion.section
               ref={recommendationsRef}
               key="error"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
               className="mt-12"
             >
-              <div className="bg-red-50 dark:bg-red-900/20 border border-red-300 dark:border-red-800 rounded-xl p-6 text-center">
-                <div className="flex items-center justify-center mb-2">
-                  <svg
-                    className="w-8 h-8 text-red-500"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
-                </div>
-                <h3 className="text-lg font-semibold text-red-800 dark:text-red-400 mb-2">
-                  Oops! Something went wrong
-                </h3>
-                <p className="text-red-600 dark:text-red-300">{error}</p>
-                <button
-                  onClick={() => {
-                    setError(null);
-                    if (selectedMood) {
-                      handleMoodSelect(selectedMood);
-                    }
-                  }}
-                  className="mt-4 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
-                >
-                  Try Again
-                </button>
-              </div>
+              <ErrorMessage
+                message={error}
+                onRetry={() => {
+                  setError(null);
+                  if (selectedMood) {
+                    handleMoodSelect(selectedMood);
+                  }
+                }}
+              />
             </motion.section>
           )}
 
@@ -216,19 +193,21 @@ export default function HomePage() {
             </motion.section>
           )}
 
-          {recommendations && recommendations.length === 0 && (
+          {recommendations && recommendations.length === 0 && !error && (
             <motion.section
               key="empty"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
               className="mt-12"
             >
-              <div className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-8 text-center">
-                <p className="text-lg text-gray-600 dark:text-gray-400">
-                  No recommendations found. Try selecting a different mood!
-                </p>
-              </div>
+              <EmptyState
+                icon={Film}
+                title="No recommendations found"
+                description="We couldn't find any movies matching your mood. Try selecting a different mood or check back later!"
+                actionLabel="Select Another Mood"
+                onAction={() => {
+                  setRecommendations(null);
+                  setSelectedMood(null);
+                }}
+              />
             </motion.section>
           )}
         </AnimatePresence>
