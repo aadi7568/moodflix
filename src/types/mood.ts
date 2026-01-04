@@ -12,6 +12,20 @@ export type MoodType =
   | 'energetic'
   | 'nostalgic';
 
+export interface EmotionalTone {
+  primaryEmotion: string;
+  secondaryEmotions: string[];
+  tone: string; // e.g., "bittersweet", "calm but hopeful"
+  intensity: 'low' | 'medium' | 'high';
+  reasoning: string;
+}
+
+export interface MovieEmotionalProfile {
+  movieId: number;
+  emotionalTone: EmotionalTone;
+  analyzedAt: number; // timestamp
+}
+
 export interface Mood {
   id: MoodType;
   label: string;
@@ -19,6 +33,8 @@ export interface Mood {
   description: string;
   color: string;
   genrePreferences: number[];
+  emotionalTone?: string[]; // Nuanced emotional characteristics
+  toneExclusions?: string[]; // Emotional tones to avoid
 }
 
 export interface MoodAnalysisRequest {
@@ -30,5 +46,9 @@ export interface RecommendationResponse {
   mood: MoodType;
   movies: Movie[];
   reasoning: string;
+  emotionalMatchScores?: Array<{
+    movieId: number;
+    score: number;
+    reasoning: string;
+  }>;
 }
-
