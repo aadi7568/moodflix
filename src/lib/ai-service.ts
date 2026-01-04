@@ -268,10 +268,14 @@ Return your response as a JSON object with the following structure:
 
     if (hasExclusion) {
       score -= 50; // Heavy penalty for excluded tones
-      reasons.push(`Contains excluded tone: ${exclusions.find(e => 
+      const foundExclusion = exclusions.find(e => 
         primaryEmotionLower.includes(e.toLowerCase()) || 
-        movieTone.tone.toLowerCase().includes(e.toLowerCase())
-      )}`);
+        movieTone.tone.toLowerCase().includes(e.toLowerCase()) ||
+        movieTone.secondaryEmotions.some(emotion =>
+          emotion.toLowerCase().includes(e.toLowerCase())
+        )
+      );
+      reasons.push(`Contains excluded tone: ${foundExclusion}`);
     }
 
     // Check primary emotion alignment

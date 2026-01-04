@@ -253,13 +253,12 @@ ENABLE_AI_RERANKING=false
 - Falls back to genre-based sorting if AI service is unavailable
 
 ### Troubleshooting
-
 **AI re-ranking not working?**
-- Check that `GEMINI_API_KEY` is set in your `.env.local` file
+- Check that `GEMINI_API_KEY` is set in your `.env.local` file (for development) or in your deployment platform's environment variables (for production)
 - Get your API key from [Google AI Studio](https://ai.google.dev/)
 - Verify the API key is valid and has sufficient quota
 - Check server logs for error messages
-- The system will automatically fall back to genre-based sorting if AI fails
+- The system will automatically fall back to genre-based sorting if AI fails or if `GEMINI_API_KEY` is not configured
 
 **Slow recommendations?**
 - First-time analysis may take 10-30 seconds for 20-30 movies
