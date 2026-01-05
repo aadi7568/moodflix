@@ -51,4 +51,18 @@ export interface RecommendationResponse {
     score: number;
     reasoning: string;
   }>;
+  parsedMoodInfo?: NaturalLanguageMoodResponse;
+}
+
+export interface NaturalLanguageMoodRequest {
+  text: string;
+}
+
+export interface NaturalLanguageMoodResponse {
+  primaryMood: MoodType;
+  secondaryMoods: MoodType[];
+  preferences: string[];
+  reasoning: string;
+  confidence: number;
+  originalText: string;
 }

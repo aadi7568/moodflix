@@ -14,6 +14,7 @@ Discover the perfect movies and TV shows that match how you're feeling right now
 - 🎨 **Beautiful UI** - Modern, responsive design with smooth animations powered by Framer Motion
 - 🌙 **Dark Mode Support** - Automatic dark mode with seamless theme switching
 - 🎯 **AI-Powered Emotional Re-ranking** - Advanced AI analyzes movie emotional tones and re-ranks recommendations based on nuanced mood matching (e.g., "bittersweet happy", "calm but hopeful")
+- 💬 **Natural Language Mood Input** - Type how you're feeling in plain English (e.g., "I'm tired but want something uplifting") and AI maps it to the perfect mood
 - 🧠 **Smart Recommendations** - Intelligent movie suggestions that understand emotional nuance, not just genre
 - 📱 **Fully Responsive** - Works perfectly on mobile, tablet, and desktop devices
 - ⚡ **Fast Performance** - Built with Next.js 14 App Router for optimal performance
@@ -214,6 +215,45 @@ You can also deploy to:
 - **AWS Amplify**: For AWS-based deployments
 - **Railway**: Simple deployment platform
 - **Self-hosted**: Using Docker or a Node.js server
+
+## 💬 Natural Language Mood Input
+
+MoodFlix now supports natural language mood input! Instead of selecting from preset moods, you can describe how you're feeling in plain English.
+
+### How It Works
+
+1. **Switch to Natural Language Mode**: Click the toggle button to switch from mood buttons to natural language input
+2. **Describe Your Mood**: Type how you're feeling (e.g., "I'm tired but want something uplifting")
+3. **AI Parsing**: The AI analyzes your text and:
+   - Maps it to the best matching mood(s)
+   - Detects mixed emotions (e.g., "tired but want uplifting" = relaxed + happy)
+   - Extracts preferences (e.g., "short", "recent", "classic")
+4. **Get Recommendations**: Automatically fetches personalized recommendations based on your parsed mood
+
+### Example Phrases
+
+Try these examples to see how it works:
+
+- **"I feel tired but want something uplifting"** → Detects: Happy (with Relaxed undertones)
+- **"Something calm and hopeful"** → Detects: Relaxed mood
+- **"I'm sad but want to feel better"** → Detects: Happy (with Sad undertones)
+- **"Exciting but not too intense"** → Detects: Excited mood
+- **"Something short and funny"** → Detects: Happy mood + "short" preference
+
+### Features
+
+- **Mixed Emotions**: Handles complex feelings like "tired but want uplifting"
+- **Preference Extraction**: Automatically detects preferences like "short", "recent", "classic", "funny"
+- **Confidence Scoring**: Shows how confident the AI is in its mood detection
+- **Fallback Support**: If AI parsing fails, uses keyword-based matching
+- **Example Suggestions**: Quick-start examples to help you get started
+
+### Fallback Behavior
+
+If the AI can't parse your input or confidence is low:
+- The system falls back to keyword-based mood matching
+- You can always switch back to mood buttons and select manually
+- Helpful error messages guide you to rephrase
 
 ## 🤖 AI-Powered Emotional Re-ranking
 
