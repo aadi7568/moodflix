@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { tmdbService } from '@/lib/tmdb';
+import { aiService } from '@/lib/ai-service';
 import { MOODS } from '@/config/moods';
 import { MoodType } from '@/types/mood';
-import { Movie } from '@/types/movie';
+import { Movie, MovieDetails } from '@/types/movie';
 
 export const dynamic = 'force-dynamic';
+
+// Feature flag to enable/disable AI re-ranking
+const ENABLE_AI_RERANKING = process.env.ENABLE_AI_RERANKING !== 'false'; // Default to true if not explicitly disabled
+const AI_RERANKING_TIMEOUT = 30000; // 30 seconds timeout for AI analysis
 
 export async function POST(request: NextRequest) {
   try {
@@ -130,15 +135,74 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Sort by vote_average (descending) and then by vote_count (descending)
-    const sortedMovies = moviesToSort.sort((a, b) => {
-      // Primary sort: vote_average
-      if (b.vote_average !== a.vote_average) {
-        return b.vote_average - a.vote_average;
+    // Limit to top 30 for AI analysis (to avoid excessive API calls)
+    const moviesForAnalysis = moviesToSort.slice(0, 30);
+
+    let sortedMovies: Movie[] = [];
+    let emotionalMatchScores: Array<{ movieId: number; score: number; reasoning: string }> | undefined;
+    let usedAIReranking = false;
+
+    // Attempt AI re-ranking if enabled
+    if (ENABLE_AI_RERANKING) {
+      try {
+        // Fetch movie details for better emotional analysis (only for movies we'll analyze)
+        let movieDetailsMap: Map<number, MovieDetails> | undefined;
+        try {
+          const movieIds = moviesForAnalysis.map(m => m.id);
+          movieDetailsMap = await Promise.race([
+            tmdbService.getMoviesDetailsBatch(movieIds, 100),
+            new Promise<Map<number, MovieDetails>>((_, reject) =>
+              setTimeout(() => reject(new Error('Timeout')), 10000)
+            ),
+          ]) as Map<number, MovieDetails>;
+        } catch (error) {
+          console.warn('Error fetching movie details for AI analysis, continuing without:', error);
+          // Continue without movie details
+        }
+
+        // Perform AI re-ranking with timeout
+        const rerankingPromise = aiService.reRankMoviesByMood(
+          moviesForAnalysis,
+          moodType,
+          movieDetailsMap
+        );
+
+        const rerankedResults = await Promise.race([
+          rerankingPromise,
+          new Promise<Array<{ movie: Movie; score: number; reasoning: string }>>((_, reject) =>
+            setTimeout(() => reject(new Error('AI re-ranking timeout')), AI_RERANKING_TIMEOUT)
+          ),
+        ]);
+
+        sortedMovies = rerankedResults.map(result => result.movie);
+        emotionalMatchScores = rerankedResults.map(result => ({
+          movieId: result.movie.id,
+          score: result.score,
+          reasoning: result.reasoning,
+        }));
+        usedAIReranking = true;
+
+        const avgScore = emotionalMatchScores.reduce((sum, s) => sum + s.score, 0) / emotionalMatchScores.length;
+        console.log(`AI re-ranking completed for ${sortedMovies.length} movies (avg score: ${avgScore.toFixed(1)})`);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        console.warn(`AI re-ranking failed (${errorMessage}), falling back to genre-based sorting`);
+        // Fall through to genre-based sorting
+        usedAIReranking = false;
       }
-      // Secondary sort: vote_count
-      return b.vote_count - a.vote_count;
-    });
+    }
+
+    // Fallback to genre-based sorting if AI re-ranking wasn't used or failed
+    if (!usedAIReranking) {
+      sortedMovies = moviesToSort.sort((a, b) => {
+        // Primary sort: vote_average
+        if (b.vote_average !== a.vote_average) {
+          return b.vote_average - a.vote_average;
+        }
+        // Secondary sort: vote_count
+        return b.vote_count - a.vote_count;
+      });
+    }
 
     // Get top 20 movies
     const topMovies = sortedMovies.slice(0, 20);
@@ -146,18 +210,35 @@ export async function POST(request: NextRequest) {
     // Generate explanation message
     const message = preferences
       ? `Based on your ${moodConfig.label.toLowerCase()} mood and preferences, here are personalized recommendations.`
+      : usedAIReranking
+      ? `Based on your ${moodConfig.label.toLowerCase()} mood, here are ${topMovies.length} AI-curated recommendations that match your emotional tone.`
       : `Based on your ${moodConfig.label.toLowerCase()} mood, here are ${topMovies.length} carefully curated recommendations that match your current vibe.`;
 
-    return NextResponse.json(
-      {
-        success: true,
-        mood: moodType,
-        movies: topMovies,
-        message,
-        count: topMovies.length,
-      },
-      { status: 200 }
-    );
+    interface RecommendationApiResponse {
+      success: boolean;
+      mood: MoodType;
+      movies: Movie[];
+      message: string;
+      count: number;
+      emotionalMatchScores?: Array<{ movieId: number; score: number; reasoning: string }>;
+      usedAIReranking?: boolean;
+    }
+
+    const response: RecommendationApiResponse = {
+      success: true,
+      mood: moodType,
+      movies: topMovies,
+      message,
+      count: topMovies.length,
+    };
+
+    // Include emotional match scores if available (for debugging/transparency)
+    if (emotionalMatchScores && process.env.NODE_ENV === 'development') {
+      response.emotionalMatchScores = emotionalMatchScores;
+      response.usedAIReranking = usedAIReranking;
+    }
+
+    return NextResponse.json(response, { status: 200 });
   } catch (error) {
     console.error('Error generating recommendations:', error);
 

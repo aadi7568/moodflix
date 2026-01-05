@@ -103,6 +103,51 @@ class TMDBService {
   async getMovieDetails(movieId: number): Promise<MovieDetails> {
     return this.makeRequest<MovieDetails>(`/movie/${movieId}`);
   }
+
+  async getMoviesDetailsBatch(
+    movieIds: number[],
+    delayMs: number = 100
+  ): Promise<Map<number, MovieDetails>> {
+    const results = new Map<number, MovieDetails>();
+    
+    // Process in smaller batches to respect rate limits
+    const BATCH_SIZE = 5;
+    
+    for (let i = 0; i < movieIds.length; i += BATCH_SIZE) {
+      const batch = movieIds.slice(i, i + BATCH_SIZE);
+      
+      try {
+        // Fetch details for batch in parallel
+        const batchPromises = batch.map(async (movieId) => {
+          try {
+            const details = await this.getMovieDetails(movieId);
+            return { movieId, details };
+          } catch (error) {
+            console.error(`Error fetching details for movie ${movieId}:`, error);
+            return null;
+          }
+        });
+
+        const batchResults = await Promise.all(batchPromises);
+        
+        batchResults.forEach((result) => {
+          if (result) {
+            results.set(result.movieId, result.details);
+          }
+        });
+
+        // Add delay between batches to respect rate limits
+        if (i + BATCH_SIZE < movieIds.length) {
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+        }
+      } catch (error) {
+        console.error(`Error in batch details fetch:`, error);
+        // Continue with next batch
+      }
+    }
+
+    return results;
+  }
 }
 
 // Lazy initialization to avoid errors during build time

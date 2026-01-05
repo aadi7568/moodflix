@@ -13,7 +13,8 @@ Discover the perfect movies and TV shows that match how you're feeling right now
 - 🎭 **10 Mood Presets** - Choose from happy, sad, excited, relaxed, romantic, adventurous, scared, thoughtful, energetic, or nostalgic
 - 🎨 **Beautiful UI** - Modern, responsive design with smooth animations powered by Framer Motion
 - 🌙 **Dark Mode Support** - Automatic dark mode with seamless theme switching
-- 🎯 **Smart Recommendations** - AI-powered movie suggestions based on your selected mood and genre preferences
+- 🎯 **AI-Powered Emotional Re-ranking** - Advanced AI analyzes movie emotional tones and re-ranks recommendations based on nuanced mood matching (e.g., "bittersweet happy", "calm but hopeful")
+- 🧠 **Smart Recommendations** - Intelligent movie suggestions that understand emotional nuance, not just genre
 - 📱 **Fully Responsive** - Works perfectly on mobile, tablet, and desktop devices
 - ⚡ **Fast Performance** - Built with Next.js 14 App Router for optimal performance
 - 🎬 **TMDB Integration** - Access to millions of movies and TV shows from The Movie Database
@@ -31,6 +32,7 @@ Discover the perfect movies and TV shows that match how you're feeling right now
 - **Icons**: [Lucide React](https://lucide.dev/)
 - **Utilities**: [clsx](https://github.com/lukeed/clsx) & [tailwind-merge](https://github.com/dcastil/tailwind-merge)
 - **API**: [The Movie Database (TMDB)](https://www.themoviedb.org/)
+- **AI**: [Google Gemini](https://ai.google.dev/) (Gemini 1.5 Flash for emotional tone analysis)
 
 ## 📋 Prerequisites
 
@@ -119,8 +121,13 @@ TMDB_API_KEY=your_tmdb_api_key_here
 # App URL (Optional - for production)
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 
-# OpenAI API Key (Optional - for future AI features)
-OPENAI_API_KEY=your_openai_api_key_here
+# Google Gemini API Key (Required for AI re-ranking feature)
+# Get your API key from https://ai.google.dev/
+GEMINI_API_KEY=your_gemini_api_key_here
+
+# Enable/Disable AI Re-ranking (Optional, default: true)
+# Set to "false" to disable AI re-ranking and use genre-based sorting only
+ENABLE_AI_RERANKING=true
 ```
 
 **Important**: 
@@ -208,6 +215,59 @@ You can also deploy to:
 - **Railway**: Simple deployment platform
 - **Self-hosted**: Using Docker or a Node.js server
 
+## 🤖 AI-Powered Emotional Re-ranking
+
+MoodFlix uses advanced AI to analyze the emotional tone of movies and re-rank recommendations based on nuanced mood matching, not just genre filters.
+
+### How It Works
+
+1. **Emotional Tone Analysis**: When you select a mood, the AI analyzes each movie's emotional tone, atmosphere, and nuanced characteristics (e.g., "bittersweet happy", "calm but hopeful").
+
+2. **Smart Re-ranking**: Movies are scored (0-100) based on:
+   - Primary emotion match with your selected mood
+   - Secondary emotions alignment
+   - Nuanced tone matching (distinguishes "bittersweet happy" from just "happy")
+   - Exclusion penalties (e.g., dark movies are heavily penalized for "Relaxed" mood)
+
+3. **Tone Mismatch Prevention**: The system actively avoids tone mismatches. For example, when you're in a "Relaxed" mood, it excludes movies with dark, intense, or disturbing tones.
+
+### Examples of Nuanced Matching
+
+- **"Happy" mood**: Matches "bittersweet happy", "uplifting", "joyful but not overly saccharine"
+- **"Relaxed" mood**: Matches "calm but hopeful", "soothing", "peaceful" - excludes "dark", "intense", "disturbing"
+- **"Sad" mood**: Matches "melancholic but uplifting", "cathartic", "bittersweet"
+
+### Enabling/Disabling AI Re-ranking
+
+AI re-ranking is enabled by default. To disable it and use genre-based sorting only:
+
+```env
+ENABLE_AI_RERANKING=false
+```
+
+### Cost Considerations
+
+- Uses Google's Gemini 1.5 Flash model for cost efficiency
+- Implements intelligent caching (7-day TTL) to avoid re-analyzing the same movies
+- Processes movies in batches to optimize API calls
+- Falls back to genre-based sorting if AI service is unavailable
+
+### Troubleshooting
+**AI re-ranking not working?**
+- Check that `GEMINI_API_KEY` is set in your `.env.local` file (for development) or in your deployment platform's environment variables (for production)
+- Get your API key from [Google AI Studio](https://ai.google.dev/)
+- Verify the API key is valid and has sufficient quota
+- Check server logs for error messages
+- The system will automatically fall back to genre-based sorting if AI fails or if `GEMINI_API_KEY` is not configured
+
+**Slow recommendations?**
+- First-time analysis may take 10-30 seconds for 20-30 movies
+- Subsequent requests are faster due to caching
+- Consider reducing the number of movies analyzed (currently limited to top 30)
+
+**Debug Endpoint** (Development only):
+- Visit `/api/debug/ai-cache` to view cache statistics and AI service status
+
 ## 📁 Project Structure
 
 ```
@@ -217,7 +277,8 @@ moodflix/
 │   │   ├── api/
 │   │   │   ├── recommendations/    # POST endpoint for mood-based recommendations
 │   │   │   ├── trending/           # GET endpoint for trending content
-│   │   │   └── mood-analysis/      # Future AI analysis endpoint
+│   │   │   ├── mood-analysis/      # AI analysis endpoint
+│   │   │   └── debug/              # Debug endpoints (development only)
 │   │   ├── layout.tsx              # Root layout with metadata and fonts
 │   │   ├── page.tsx                # Main landing page
 │   │   └── globals.css             # Global styles
@@ -228,7 +289,7 @@ moodflix/
 │   │   └── RecommendationList.tsx # Recommendations list component
 │   ├── lib/
 │   │   ├── tmdb.ts                 # TMDB API service
-│   │   ├── ai-service.ts           # Future AI service integration
+│   │   ├── ai-service.ts           # AI service for emotional tone analysis and re-ranking
 │   │   └── utils.ts                 # Utility functions
 │   ├── types/
 │   │   ├── movie.ts                # Movie-related TypeScript types
@@ -263,6 +324,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 🙏 Acknowledgments
 
 - [The Movie Database (TMDB)](https://www.themoviedb.org/) for providing the movie data API
+- [Google Gemini](https://ai.google.dev/) for AI-powered emotional tone analysis
 - [Next.js](https://nextjs.org/) team for the amazing framework
 - [Vercel](https://vercel.com/) for hosting and deployment platform
 

@@ -8,6 +8,17 @@ export const MOODS: Record<MoodType, Mood> = {
     color: 'bg-yellow-500',
     description: 'Uplifting and feel-good content',
     genrePreferences: [35, 10751, 16, 10402], // Comedy, Family, Animation, Music
+    emotionalTone: [
+      'uplifting',
+      'joyful',
+      'bittersweet happy',
+      'feel-good',
+      'lighthearted',
+      'cheerful',
+      'optimistic',
+      'warm',
+    ],
+    toneExclusions: ['dark', 'disturbing', 'depressing', 'intense', 'violent', 'melancholic'],
   },
   sad: {
     id: 'sad',
@@ -16,6 +27,17 @@ export const MOODS: Record<MoodType, Mood> = {
     color: 'bg-blue-500',
     description: 'Emotional and touching stories',
     genrePreferences: [18, 10749], // Drama, Romance
+    emotionalTone: [
+      'melancholic',
+      'emotional',
+      'touching',
+      'bittersweet',
+      'melancholic but uplifting',
+      'cathartic',
+      'poignant',
+      'heartfelt',
+    ],
+    toneExclusions: ['comedic', 'lighthearted', 'action-packed', 'thrilling'],
   },
   excited: {
     id: 'excited',
@@ -24,6 +46,17 @@ export const MOODS: Record<MoodType, Mood> = {
     color: 'bg-orange-500',
     description: 'High-energy and thrilling',
     genrePreferences: [28, 12, 878], // Action, Adventure, Sci-Fi
+    emotionalTone: [
+      'thrilling',
+      'high-energy',
+      'adrenaline-pumping',
+      'exciting',
+      'intense',
+      'action-packed',
+      'suspenseful',
+      'energetic',
+    ],
+    toneExclusions: ['calm', 'slow-paced', 'meditative', 'relaxing', 'melancholic'],
   },
   relaxed: {
     id: 'relaxed',
@@ -32,6 +65,17 @@ export const MOODS: Record<MoodType, Mood> = {
     color: 'bg-green-500',
     description: 'Calm and soothing content',
     genrePreferences: [99, 36, 10751], // Documentary, History, Family
+    emotionalTone: [
+      'calm',
+      'soothing',
+      'peaceful',
+      'calm but hopeful',
+      'meditative',
+      'tranquil',
+      'gentle',
+      'serene',
+    ],
+    toneExclusions: ['dark', 'intense', 'disturbing', 'violent', 'thrilling', 'suspenseful', 'horrifying'],
   },
   romantic: {
     id: 'romantic',
@@ -40,6 +84,17 @@ export const MOODS: Record<MoodType, Mood> = {
     color: 'bg-pink-500',
     description: 'Love stories and romantic comedies',
     genrePreferences: [10749, 35], // Romance, Comedy
+    emotionalTone: [
+      'romantic',
+      'sweet',
+      'heartwarming',
+      'tender',
+      'passionate',
+      'charming',
+      'bittersweet romantic',
+      'uplifting love story',
+    ],
+    toneExclusions: ['violent', 'dark', 'disturbing', 'horrifying'],
   },
   adventurous: {
     id: 'adventurous',
@@ -48,6 +103,17 @@ export const MOODS: Record<MoodType, Mood> = {
     color: 'bg-purple-500',
     description: 'Epic journeys and explorations',
     genrePreferences: [12, 14, 28], // Adventure, Fantasy, Action
+    emotionalTone: [
+      'epic',
+      'adventurous',
+      'exploratory',
+      'journey-focused',
+      'heroic',
+      'grand',
+      'expansive',
+      'quest-driven',
+    ],
+    toneExclusions: ['claustrophobic', 'mundane', 'domestic', 'slow-paced'],
   },
   scared: {
     id: 'scared',
@@ -56,6 +122,17 @@ export const MOODS: Record<MoodType, Mood> = {
     color: 'bg-red-500',
     description: 'Horror and suspenseful thrillers',
     genrePreferences: [27, 53, 9648], // Horror, Thriller, Mystery
+    emotionalTone: [
+      'frightening',
+      'suspenseful',
+      'terrifying',
+      'thrilling',
+      'dark',
+      'intense',
+      'disturbing',
+      'chilling',
+    ],
+    toneExclusions: ['lighthearted', 'cheerful', 'uplifting', 'calm', 'peaceful'],
   },
   thoughtful: {
     id: 'thoughtful',
@@ -64,6 +141,17 @@ export const MOODS: Record<MoodType, Mood> = {
     color: 'bg-indigo-500',
     description: 'Mind-bending and philosophical',
     genrePreferences: [878, 9648, 18], // Sci-Fi, Mystery, Drama
+    emotionalTone: [
+      'philosophical',
+      'thought-provoking',
+      'mind-bending',
+      'contemplative',
+      'intellectual',
+      'complex',
+      'layered',
+      'reflective',
+    ],
+    toneExclusions: ['mindless', 'shallow', 'superficial', 'action-only'],
   },
   energetic: {
     id: 'energetic',
@@ -72,6 +160,17 @@ export const MOODS: Record<MoodType, Mood> = {
     color: 'bg-yellow-600',
     description: 'Fast-paced and action-packed',
     genrePreferences: [28, 80, 53], // Action, Crime, Thriller
+    emotionalTone: [
+      'fast-paced',
+      'energetic',
+      'dynamic',
+      'intense',
+      'action-packed',
+      'high-octane',
+      'pulsating',
+      'vibrant',
+    ],
+    toneExclusions: ['slow-paced', 'meditative', 'calm', 'relaxing', 'melancholic'],
   },
   nostalgic: {
     id: 'nostalgic',
@@ -80,6 +179,16 @@ export const MOODS: Record<MoodType, Mood> = {
     color: 'bg-amber-600',
     description: 'Classic and timeless favorites',
     genrePreferences: [18, 10749, 35], // Drama, Romance, Comedy
+    emotionalTone: [
+      'nostalgic',
+      'retro',
+      'classic',
+      'timeless',
+      'warm nostalgia',
+      'sentimental',
+      'vintage',
+      'beloved classic',
+    ],
+    toneExclusions: ['modern', 'futuristic', 'experimental', 'avant-garde'],
   },
 };
-
