@@ -2,21 +2,22 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Film } from 'lucide-react';
+import { ToggleLeft, ToggleRight } from 'lucide-react';
 import MoodSelector from '../components/MoodSelector';
+import NaturalLanguageMoodInput from '../components/NaturalLanguageMoodInput';
 import MovieCard from '../components/MovieCard';
-import MovieCardSkeleton from '../components/MovieCardSkeleton';
-import ErrorMessage from '../components/ErrorMessage';
-import EmptyState from '../components/EmptyState';
-import PageTransition from '../components/PageTransition';
-import { MoodType } from '../types/mood';
+import { MoodType, NaturalLanguageMoodResponse } from '../types/mood';
 import { Movie } from '../types/movie';
+import { MOODS } from '../config/moods';
 
 export default function HomePage() {
   const [selectedMood, setSelectedMood] = useState<MoodType | null>(null);
   const [recommendations, setRecommendations] = useState<Movie[] | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [inputMode, setInputMode] = useState<'buttons' | 'natural'>('buttons');
+  const [parsedMoodInfo, setParsedMoodInfo] = useState<NaturalLanguageMoodResponse | null>(null);
+  const [preferences, setPreferences] = useState<string[]>([]);
   const recommendationsRef = useRef<HTMLDivElement>(null);
 
   // Scroll to recommendations when they're loaded
@@ -52,7 +53,7 @@ export default function HomePage() {
     }
   }, [error]);
 
-  const handleMoodSelect = async (mood: MoodType) => {
+  const handleMoodSelect = async (mood: MoodType, prefs?: string[]) => {
     setSelectedMood(mood);
     setLoading(true);
     setError(null);
@@ -64,7 +65,10 @@ export default function HomePage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ mood }),
+        body: JSON.stringify({ 
+          mood,
+          preferences: prefs || preferences,
+        }),
       });
 
       const data = await response.json();
@@ -93,52 +97,107 @@ export default function HomePage() {
     }
   };
 
+  const handleNaturalLanguageParsed = (parsed: NaturalLanguageMoodResponse) => {
+    setParsedMoodInfo(parsed);
+    setPreferences(parsed.preferences);
+    setSelectedMood(parsed.primaryMood);
+    // Automatically fetch recommendations
+    handleMoodSelect(parsed.primaryMood, parsed.preferences);
+  };
+
+  const handleInputModeToggle = () => {
+    setInputMode(inputMode === 'buttons' ? 'natural' : 'buttons');
+    setSelectedMood(null);
+    setRecommendations(null);
+    setParsedMoodInfo(null);
+    setPreferences([]);
+    setError(null);
+  };
+
   return (
-    <PageTransition>
-      <main className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-gray-800 dark:via-gray-800 dark:to-gray-900 relative overflow-hidden">
-        {/* Animated gradient background elements */}
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-300 dark:bg-blue-900 rounded-full mix-blend-multiply dark:mix-blend-soft-light filter blur-3xl opacity-30 animate-blob" />
-          <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-purple-300 dark:bg-purple-900 rounded-full mix-blend-multiply dark:mix-blend-soft-light filter blur-3xl opacity-30 animate-blob animation-delay-2000" />
-          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-80 h-80 bg-pink-300 dark:bg-pink-900 rounded-full mix-blend-multiply dark:mix-blend-soft-light filter blur-3xl opacity-30 animate-blob animation-delay-4000" />
-        </div>
-        <div className="container mx-auto px-4 py-8 md:py-12 lg:py-16 relative z-10">
+    <main className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+      <div className="container mx-auto px-4 py-8 md:py-12 lg:py-16">
         {/* Hero Section */}
         <motion.section
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+          transition={{ duration: 0.6 }}
           className="text-center mb-12 md:mb-16"
         >
-          <motion.h1
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.6, delay: 0.1 }}
-            className="text-4xl md:text-5xl lg:text-6xl font-bold text-gray-900 dark:text-white mb-4 bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent"
-          >
+          <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-gray-900 dark:text-white mb-4 bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">
             What&apos;s your mood?
-          </motion.h1>
-          <motion.p
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.2 }}
-            className="text-lg md:text-xl text-gray-600 dark:text-gray-300 max-w-2xl mx-auto"
-          >
+          </h1>
+          <p className="text-lg md:text-xl text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
             Discover the perfect movies and shows that match how you&apos;re feeling right now
-          </motion.p>
+          </p>
         </motion.section>
 
-        {/* Mood Selector Section */}
+        {/* Input Mode Toggle */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.1 }}
+          className="flex justify-center mb-6"
+        >
+          <button
+            onClick={handleInputModeToggle}
+            className="flex items-center gap-3 px-4 py-2 rounded-lg bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 hover:border-blue-500 dark:hover:border-blue-500 transition-colors"
+            aria-label={`Switch to ${inputMode === 'buttons' ? 'natural language' : 'mood buttons'} input`}
+          >
+            {inputMode === 'buttons' ? (
+              <>
+                <ToggleLeft className="w-5 h-5 text-gray-400" />
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Switch to Natural Language
+                </span>
+              </>
+            ) : (
+              <>
+                <ToggleRight className="w-5 h-5 text-blue-500" />
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Switch to Mood Buttons
+                </span>
+              </>
+            )}
+          </button>
+        </motion.div>
+
+        {/* Mood Input Section */}
         <motion.section
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.2 }}
           className="mb-12 md:mb-16"
         >
-          <MoodSelector
-            selectedMood={selectedMood}
-            onMoodSelect={handleMoodSelect}
-          />
+          <AnimatePresence mode="wait">
+            {inputMode === 'buttons' ? (
+              <motion.div
+                key="buttons"
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 20 }}
+                transition={{ duration: 0.3 }}
+              >
+                <MoodSelector
+                  selectedMood={selectedMood}
+                  onMoodSelect={handleMoodSelect}
+                />
+              </motion.div>
+            ) : (
+              <motion.div
+                key="natural"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.3 }}
+              >
+                <NaturalLanguageMoodInput
+                  onMoodParsed={handleNaturalLanguageParsed}
+                  onError={setError}
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
         </motion.section>
 
         {/* Recommendations Section */}
@@ -151,16 +210,11 @@ export default function HomePage() {
               exit={{ opacity: 0 }}
               className="mt-12"
             >
-              <div className="mb-8">
-                <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-2">
-                  Finding Your Recommendations
-                </h2>
-                <p className="text-gray-600 dark:text-gray-400">
-                  Searching for the perfect matches...
+              <div className="flex flex-col items-center justify-center py-16">
+                <div className="w-16 h-16 border-4 border-gray-300 dark:border-gray-600 border-t-blue-500 rounded-full animate-spin mb-4" />
+                <p className="text-lg text-gray-600 dark:text-gray-400">
+                  Finding the perfect recommendations for you...
                 </p>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                <MovieCardSkeleton count={8} />
               </div>
             </motion.section>
           )}
@@ -169,17 +223,43 @@ export default function HomePage() {
             <motion.section
               ref={recommendationsRef}
               key="error"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
               className="mt-12"
             >
-              <ErrorMessage
-                message={error}
-                onRetry={() => {
-                  setError(null);
-                  if (selectedMood) {
-                    handleMoodSelect(selectedMood);
-                  }
-                }}
-              />
+              <div className="bg-red-50 dark:bg-red-900/20 border border-red-300 dark:border-red-800 rounded-xl p-6 text-center">
+                <div className="flex items-center justify-center mb-2">
+                  <svg
+                    className="w-8 h-8 text-red-500"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-semibold text-red-800 dark:text-red-400 mb-2">
+                  Oops! Something went wrong
+                </h3>
+                <p className="text-red-600 dark:text-red-300">{error}</p>
+                <button
+                  onClick={() => {
+                    setError(null);
+                    if (selectedMood) {
+                      handleMoodSelect(selectedMood);
+                    }
+                  }}
+                  className="mt-4 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+                >
+                  Try Again
+                </button>
+              </div>
             </motion.section>
           )}
 
@@ -193,79 +273,73 @@ export default function HomePage() {
               transition={{ duration: 0.5 }}
               className="mt-12"
             >
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4 }}
-                className="mb-8"
-              >
+              <div className="mb-8">
                 <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-2">
                   Your Recommendations
                 </h2>
-                <p className="text-gray-600 dark:text-gray-400">
-                  We found {recommendations.length} perfect match{recommendations.length !== 1 ? 'es' : ''} for your mood
-                </p>
-              </motion.div>
+                <div className="space-y-2">
+                  <p className="text-gray-600 dark:text-gray-400">
+                    We found {recommendations.length} perfect match{recommendations.length !== 1 ? 'es' : ''} for your mood
+                  </p>
+                  {parsedMoodInfo && (
+                    <div className="flex flex-wrap items-center gap-2 pt-2">
+                      <span className="text-sm text-gray-500 dark:text-gray-400">
+                        Detected: {MOODS[parsedMoodInfo.primaryMood].emoji} {MOODS[parsedMoodInfo.primaryMood].label}
+                      </span>
+                      {parsedMoodInfo.secondaryMoods.length > 0 && (
+                        <span className="text-sm text-gray-500 dark:text-gray-400">
+                          + {parsedMoodInfo.secondaryMoods.map(m => MOODS[m].emoji).join(' ')}
+                        </span>
+                      )}
+                      {preferences.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {preferences.map((pref, idx) => (
+                            <span
+                              key={idx}
+                              className="px-2 py-0.5 text-xs rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
+                            >
+                              {pref}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
 
-              <motion.div
-                className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
-                variants={{
-                  hidden: { opacity: 0 },
-                  show: {
-                    opacity: 1,
-                    transition: {
-                      staggerChildren: 0.1,
-                      delayChildren: 0.2,
-                    },
-                  },
-                }}
-                initial="hidden"
-                animate="show"
-              >
-                {recommendations.map((movie) => (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                {recommendations.map((movie, index) => (
                   <motion.div
                     key={movie.id}
-                    variants={{
-                      hidden: { opacity: 0, y: 30, scale: 0.9 },
-                      show: {
-                        opacity: 1,
-                        y: 0,
-                        scale: 1,
-                        transition: {
-                          type: 'spring',
-                          stiffness: 100,
-                          damping: 15,
-                        },
-                      },
-                    }}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.4, delay: index * 0.1 }}
                   >
                     <MovieCard movie={movie} />
                   </motion.div>
                 ))}
-              </motion.div>
+              </div>
             </motion.section>
           )}
 
-          {recommendations && recommendations.length === 0 && !error && (
+          {recommendations && recommendations.length === 0 && (
             <motion.section
               key="empty"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
               className="mt-12"
             >
-              <EmptyState
-                icon={Film}
-                title="No recommendations found"
-                description="We couldn't find any movies matching your mood. Try selecting a different mood or check back later!"
-                actionLabel="Select Another Mood"
-                onAction={() => {
-                  setRecommendations(null);
-                  setSelectedMood(null);
-                }}
-              />
+              <div className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-8 text-center">
+                <p className="text-lg text-gray-600 dark:text-gray-400">
+                  No recommendations found. Try selecting a different mood!
+                </p>
+              </div>
             </motion.section>
           )}
         </AnimatePresence>
-        </div>
-      </main>
-    </PageTransition>
+    </div>
+    </main>
   );
 }

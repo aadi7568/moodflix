@@ -1,7 +1,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { z } from 'zod';
 import { Movie, MovieDetails } from '../types/movie';
-import { MoodType, EmotionalTone, MovieEmotionalProfile } from '../types/mood';
+import { MoodType, EmotionalTone, MovieEmotionalProfile, NaturalLanguageMoodResponse } from '../types/mood';
 import { MOODS } from '../config/moods';
 
 // Schema for structured AI response
@@ -13,10 +13,21 @@ const EmotionalToneSchema = z.object({
   reasoning: z.string().describe('Brief explanation of the emotional analysis'),
 });
 
+// Schema for natural language mood parsing response
+const NaturalLanguageMoodSchema = z.object({
+  primaryMood: z.enum(['happy', 'sad', 'excited', 'relaxed', 'romantic', 'adventurous', 'scared', 'thoughtful', 'energetic', 'nostalgic']),
+  secondaryMoods: z.array(z.enum(['happy', 'sad', 'excited', 'relaxed', 'romantic', 'adventurous', 'scared', 'thoughtful', 'energetic', 'nostalgic'])),
+  preferences: z.array(z.string()).describe('Additional preferences like "short", "recent", "classic", "funny", "serious"'),
+  reasoning: z.string().describe('Brief explanation of how the text was mapped to moods'),
+  confidence: z.number().min(0).max(100).describe('Confidence score 0-100'),
+});
+
 class AIService {
   private model: ReturnType<GoogleGenerativeAI['getGenerativeModel']> | null = null;
   private cache: Map<number, MovieEmotionalProfile> = new Map();
+  private moodParserCache: Map<string, NaturalLanguageMoodResponse> = new Map();
   private readonly CACHE_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days in milliseconds
+  private readonly MOOD_PARSER_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours for mood parsing
 
   private getModel() {
     if (!this.model) {
@@ -235,6 +246,277 @@ Return your response as a JSON object with the following structure:
 
   clearCache() {
     this.cache.clear();
+  }
+
+  /**
+   * Parses natural language text to extract mood(s) and preferences
+   */
+  async parseNaturalLanguageMood(text: string): Promise<NaturalLanguageMoodResponse | null> {
+    if (!text || text.trim().length === 0) {
+      return null;
+    }
+
+    const normalizedText = text.trim().toLowerCase();
+    
+    // Check cache first
+    const cached = this.moodParserCache.get(normalizedText);
+    if (cached) {
+      return { ...cached, originalText: text };
+    }
+
+    const model = this.getModel();
+    if (!model) {
+      // Fallback to keyword-based parsing
+      return this.parseMoodByKeywords(text);
+    }
+
+    try {
+      const moodDescriptions = Object.values(MOODS).map(m => `${m.id}: ${m.description}`).join('\n');
+
+      const prompt = `Analyze this user's natural language mood description and map it to movie moods.
+
+User input: "${text}"
+
+Available moods:
+${moodDescriptions}
+
+Extract:
+1. Primary mood (the best matching mood from the list above)
+2. Secondary moods (if user expresses mixed emotions, e.g., "tired but want uplifting" = relaxed + happy)
+3. Additional preferences (e.g., "short", "recent", "classic", "funny", "serious", "long", "action", "comedy", etc.)
+4. Confidence score (0-100) based on how clearly the mood is expressed
+5. Brief reasoning for your mapping
+
+Handle mixed emotions intelligently. For example:
+- "I'm tired but want something uplifting" → primaryMood: "happy", secondaryMoods: ["relaxed"]
+- "Sad but hopeful" → primaryMood: "sad", secondaryMoods: ["happy"]
+- "Something calm and short" → primaryMood: "relaxed", preferences: ["short"]
+
+If the text is unclear or doesn't match any mood well, use the closest match with lower confidence (below 60).
+
+Return your response as a JSON object with this structure:
+{
+  "primaryMood": "one of the mood IDs",
+  "secondaryMoods": ["array of mood IDs"],
+  "preferences": ["array of preference strings"],
+  "reasoning": "explanation",
+  "confidence": 0-100
+}`;
+
+      const result = await model.generateContent(prompt);
+      const responseText = result.response.text();
+      
+      if (!responseText) {
+        throw new Error('Empty response from Gemini');
+      }
+
+      // Parse and validate response
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(responseText);
+      } catch (parseError) {
+        throw new Error(`Failed to parse AI response as JSON: ${parseError}`);
+      }
+
+      const validated = NaturalLanguageMoodSchema.parse(parsed);
+      
+      const response: NaturalLanguageMoodResponse = {
+        ...validated,
+        originalText: text,
+      };
+
+      // Cache the result
+      this.moodParserCache.set(normalizedText, response);
+
+      return response;
+    } catch (error) {
+      console.error(`Error parsing natural language mood:`, error);
+      // Fallback to keyword-based parsing
+      return this.parseMoodByKeywords(text);
+    }
+  }
+
+  /**
+   * Keyword-based fallback parser when AI parsing fails
+   */
+  parseMoodByKeywords(text: string): NaturalLanguageMoodResponse {
+    const lowerText = text.toLowerCase();
+    const moodScores: Record<MoodType, number> = {
+      happy: 0,
+      sad: 0,
+      excited: 0,
+      relaxed: 0,
+      romantic: 0,
+      adventurous: 0,
+      scared: 0,
+      thoughtful: 0,
+      energetic: 0,
+      nostalgic: 0,
+    };
+
+    const preferences: string[] = [];
+
+    // Keyword mappings
+    const keywordMap: Record<string, MoodType[]> = {
+      // Happy keywords
+      'happy': ['happy'],
+      'uplifting': ['happy'],
+      'cheerful': ['happy'],
+      'joyful': ['happy'],
+      'upbeat': ['happy'],
+      'feel-good': ['happy'],
+      'lighthearted': ['happy'],
+      'optimistic': ['happy'],
+      
+      // Sad keywords
+      'sad': ['sad'],
+      'melancholic': ['sad'],
+      'down': ['sad'],
+      'depressed': ['sad'],
+      'emotional': ['sad'],
+      'touching': ['sad'],
+      'cathartic': ['sad'],
+      
+      // Excited keywords
+      'excited': ['excited'],
+      'thrilling': ['excited'],
+      'thrilled': ['excited'],
+      'adrenaline': ['excited'],
+      'pumped': ['excited'],
+      'hyped': ['excited'],
+      
+      // Relaxed keywords
+      'relaxed': ['relaxed'],
+      'calm': ['relaxed'],
+      'peaceful': ['relaxed'],
+      'tired': ['relaxed'],
+      'exhausted': ['relaxed'],
+      'worn out': ['relaxed'],
+      'soothing': ['relaxed'],
+      'chill': ['relaxed'],
+      'mellow': ['relaxed'],
+      
+      // Romantic keywords
+      'romantic': ['romantic'],
+      'love': ['romantic'],
+      'romance': ['romantic'],
+      'sweet': ['romantic'],
+      'heartwarming': ['romantic'],
+      
+      // Adventurous keywords
+      'adventurous': ['adventurous'],
+      'adventure': ['adventurous'],
+      'epic': ['adventurous'],
+      'journey': ['adventurous'],
+      'exploration': ['adventurous'],
+      
+      // Scared keywords
+      'scared': ['scared'],
+      'frightening': ['scared'],
+      'horror': ['scared'],
+      'terrifying': ['scared'],
+      'suspenseful': ['scared'],
+      'thriller': ['scared'],
+      
+      // Thoughtful keywords
+      'thoughtful': ['thoughtful'],
+      'philosophical': ['thoughtful'],
+      'mind-bending': ['thoughtful'],
+      'deep': ['thoughtful'],
+      'intellectual': ['thoughtful'],
+      'contemplative': ['thoughtful'],
+      
+      // Energetic keywords
+      'energetic': ['energetic'],
+      'energized': ['energetic'],
+      'high-energy': ['energetic'],
+      'fast-paced': ['energetic'],
+      'action-packed': ['energetic'],
+      
+      // Nostalgic keywords
+      'nostalgic': ['nostalgic'],
+      'nostalgia': ['nostalgic'],
+      'retro': ['nostalgic'],
+      'classic': ['nostalgic'],
+      'vintage': ['nostalgic'],
+      'timeless': ['nostalgic'],
+    };
+
+    // Preference keywords
+    const preferenceKeywords = {
+      'short': 'short',
+      'quick': 'short',
+      'brief': 'short',
+      'long': 'long',
+      'recent': 'recent',
+      'new': 'recent',
+      'latest': 'recent',
+      'old': 'classic',
+      'classic': 'classic',
+      'funny': 'funny',
+      'comedy': 'funny',
+      'serious': 'serious',
+      'dramatic': 'serious',
+    };
+
+    // Score moods based on keywords
+    for (const [keyword, moods] of Object.entries(keywordMap)) {
+      if (lowerText.includes(keyword)) {
+        moods.forEach(mood => {
+          moodScores[mood] += 1;
+        });
+      }
+    }
+
+    // Extract preferences
+    for (const [keyword, preference] of Object.entries(preferenceKeywords)) {
+      if (lowerText.includes(keyword) && !preferences.includes(preference)) {
+        preferences.push(preference);
+      }
+    }
+
+    // Handle negation (e.g., "not tired")
+    if (lowerText.includes('not ')) {
+      const notIndex = lowerText.indexOf('not ');
+      const afterNot = lowerText.substring(notIndex + 4);
+      for (const [keyword, moods] of Object.entries(keywordMap)) {
+        if (afterNot.includes(keyword)) {
+          moods.forEach(mood => {
+            moodScores[mood] = Math.max(0, moodScores[mood] - 2);
+          });
+        }
+      }
+    }
+
+    // Find primary mood (highest score)
+    let primaryMood: MoodType = 'happy';
+    let maxScore = 0;
+    for (const [mood, score] of Object.entries(moodScores) as [MoodType, number][]) {
+      if (score > maxScore) {
+        maxScore = score;
+        primaryMood = mood;
+      }
+    }
+
+    // Find secondary moods (scores > 0 but less than primary)
+    const secondaryMoods: MoodType[] = [];
+    for (const [mood, score] of Object.entries(moodScores) as [MoodType, number][]) {
+      if (score > 0 && mood !== primaryMood && score >= maxScore * 0.5) {
+        secondaryMoods.push(mood);
+      }
+    }
+
+    // Calculate confidence based on keyword matches
+    const confidence = maxScore > 0 ? Math.min(100, 50 + (maxScore * 10)) : 30;
+
+    return {
+      primaryMood,
+      secondaryMoods,
+      preferences,
+      reasoning: `Matched keywords to mood "${primaryMood}"${secondaryMoods.length > 0 ? ` with secondary moods: ${secondaryMoods.join(', ')}` : ''}`,
+      confidence,
+      originalText: text,
+    };
   }
 
   /**

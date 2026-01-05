@@ -14,7 +14,7 @@ const AI_RERANKING_TIMEOUT = 30000; // 30 seconds timeout for AI analysis
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { mood, preferences } = body;
+    const { mood, preferences, parsedMoodInfo } = body;
 
     // Validate mood
     if (!mood || typeof mood !== 'string') {
@@ -220,6 +220,8 @@ export async function POST(request: NextRequest) {
       movies: Movie[];
       message: string;
       count: number;
+      preferences?: string[];
+      parsedMoodInfo?: typeof parsedMoodInfo;
       emotionalMatchScores?: Array<{ movieId: number; score: number; reasoning: string }>;
       usedAIReranking?: boolean;
     }
@@ -231,6 +233,17 @@ export async function POST(request: NextRequest) {
       message,
       count: topMovies.length,
     };
+
+    // Store preferences for future filtering implementation
+    if (preferences && Array.isArray(preferences) && preferences.length > 0) {
+      response.preferences = preferences;
+      console.log('User preferences stored:', preferences);
+    }
+
+    // Include parsed mood info if available
+    if (parsedMoodInfo) {
+      response.parsedMoodInfo = parsedMoodInfo;
+    }
 
     // Include emotional match scores if available (for debugging/transparency)
     if (emotionalMatchScores && process.env.NODE_ENV === 'development') {
