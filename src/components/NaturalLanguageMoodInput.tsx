@@ -38,15 +38,17 @@ export default function NaturalLanguageMoodInput({
     inputRef.current?.focus();
   }, []);
 
-  const handleSubmit = async (e?: React.FormEvent) => {
+  const handleSubmit = async (e?: React.FormEvent, textOverride?: string) => {
     e?.preventDefault();
     
-    if (!input.trim()) {
+    const textToSubmit = textOverride || input;
+    
+    if (!textToSubmit.trim()) {
       setError('Please enter how you\'re feeling');
       return;
     }
 
-    if (input.length > MAX_LENGTH) {
+    if (textToSubmit.length > MAX_LENGTH) {
       setError(`Input must be ${MAX_LENGTH} characters or less`);
       return;
     }
@@ -62,7 +64,7 @@ export default function NaturalLanguageMoodInput({
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ text: input }),
+        body: JSON.stringify({ text: textToSubmit }),
       });
 
       const data = await response.json();
@@ -114,9 +116,8 @@ export default function NaturalLanguageMoodInput({
   const handleExampleClick = (example: string) => {
     setInput(example);
     setShowExamples(false);
-    setTimeout(() => {
-      handleSubmit();
-    }, 100);
+    // Submit immediately with the example text, don't wait for state update
+    handleSubmit(undefined, example);
   };
 
   const primaryMoodConfig = parsedResult ? MOODS[parsedResult.primaryMood] : null;
