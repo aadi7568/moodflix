@@ -6,6 +6,7 @@ import { ToggleLeft, ToggleRight } from 'lucide-react';
 import MoodSelector from '../components/MoodSelector';
 import NaturalLanguageMoodInput from '../components/NaturalLanguageMoodInput';
 import MovieCard from '../components/MovieCard';
+import DarkModeToggle from '../components/DarkModeToggle';
 import { MoodType, NaturalLanguageMoodResponse } from '../types/mood';
 import { Movie } from '../types/movie';
 import { MOODS } from '../config/moods';
@@ -115,7 +116,17 @@ export default function HomePage() {
   };
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+    <main className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 relative">
+      {/* Dark Mode Toggle - Top Right */}
+      <div className="fixed top-4 right-4 md:top-6 md:right-6 z-50">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.3 }}
+        >
+          <DarkModeToggle />
+        </motion.div>
+      </div>
       <div className="container mx-auto px-4 py-8 md:py-12 lg:py-16">
         {/* Hero Section */}
         <motion.section
