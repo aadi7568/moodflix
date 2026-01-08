@@ -34,13 +34,13 @@ export default function MoodSelector({
 
   return (
     <div className="w-full">
-      <div className="flex flex-wrap justify-center gap-3 sm:gap-4 overflow-x-auto pb-2">
+      <div className="flex flex-wrap justify-center gap-3 sm:gap-4 overflow-x-auto pt-2 pb-4">
         {moods.map((mood) => {
           const isSelected = selectedMood === mood.id;
           const isHovered = hoveredMood === mood.id;
 
           return (
-            <div key={mood.id} className="relative group">
+            <div key={mood.id} className="relative group overflow-visible">
               <motion.button
                 onClick={() => onMoodSelect(mood.id)}
                 onMouseEnter={() => setHoveredMood(mood.id)}
@@ -52,10 +52,12 @@ export default function MoodSelector({
                   'bg-white dark:bg-gray-800',
                   'shadow-sm hover:shadow-md',
                   'focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2',
+                  'overflow-visible',
                   isSelected
                     ? `${borderColorMap[mood.color] || 'border-gray-500'} ring-2 ring-offset-2 ring-blue-500/50 shadow-md`
                     : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
                 )}
+                style={{ overflow: 'visible' }}
                 whileHover={{ scale: 1.1 }}
                 whileTap={{ scale: 0.95 }}
                 transition={{ type: 'spring', stiffness: 300, damping: 20 }}
@@ -69,12 +71,16 @@ export default function MoodSelector({
                 {isSelected && (
                   <motion.div
                     className={cn(
-                      'absolute -top-1 -right-1 w-5 h-5 rounded-full',
+                      'absolute w-5 h-5 rounded-full',
                       'flex items-center justify-center',
                       mood.color,
                       'text-white text-xs font-bold',
-                      'shadow-sm'
+                      'shadow-sm z-10'
                     )}
+                    style={{
+                      top: '-4px',
+                      right: '-4px',
+                    }}
                     initial={{ scale: 0 }}
                     animate={{ scale: 1 }}
                     transition={{ type: 'spring', stiffness: 500 }}
