@@ -8,7 +8,7 @@ export default function ThemeProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const { theme, mounted } = useTheme();
+  const { theme } = useTheme();
 
   // Apply theme to html element
   useEffect(() => {
