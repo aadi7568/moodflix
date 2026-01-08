@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { MOODS } from '../config/moods';
 import { MoodType } from '../types/mood';
@@ -29,82 +30,77 @@ export default function MoodSelector({
   onMoodSelect,
 }: MoodSelectorProps) {
   const moods = Object.values(MOODS);
+  const [hoveredMood, setHoveredMood] = useState<MoodType | null>(null);
 
   return (
     <div className="w-full">
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+      <div className="flex flex-wrap justify-center gap-3 sm:gap-4 overflow-x-auto pb-2">
         {moods.map((mood) => {
           const isSelected = selectedMood === mood.id;
+          const isHovered = hoveredMood === mood.id;
 
           return (
-            <motion.button
-              key={mood.id}
-              onClick={() => onMoodSelect(mood.id)}
-              className={cn(
-                'relative p-6 rounded-xl bg-white dark:bg-gray-800',
-                'border-2 transition-all duration-300',
-                'flex flex-col items-center justify-center gap-3',
-                'shadow-md hover:shadow-xl hover:shadow-blue-500/20 dark:hover:shadow-blue-500/10',
-                'focus-ring',
-                'hover:scale-105 hover:-translate-y-1',
-                isSelected
-                  ? `${borderColorMap[mood.color] || 'border-gray-500'} ring-2 ring-offset-2 ring-blue-500/50`
-                  : 'border-gray-200 dark:border-gray-700 border-opacity-50 hover:border-opacity-100 hover:border-blue-300 dark:hover:border-blue-600'
-              )}
-              whileHover={{ scale: 1.05, y: -4 }}
-              whileFocus={{ scale: 1.03, y: -2 }}
-              whileTap={{ scale: 0.95 }}
-              transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-              aria-pressed={isSelected}
-              aria-label={`Select ${mood.label} mood`}
-            >
-              {/* Selected indicator */}
-              {isSelected && (
+            <div key={mood.id} className="relative group">
+              <motion.button
+                onClick={() => onMoodSelect(mood.id)}
+                onMouseEnter={() => setHoveredMood(mood.id)}
+                onMouseLeave={() => setHoveredMood(null)}
+                className={cn(
+                  'relative w-12 h-12 sm:w-14 sm:h-14 rounded-full',
+                  'flex items-center justify-center',
+                  'border-2 transition-all duration-300',
+                  'bg-white dark:bg-gray-800',
+                  'shadow-sm hover:shadow-md',
+                  'focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2',
+                  isSelected
+                    ? `${borderColorMap[mood.color] || 'border-gray-500'} ring-2 ring-offset-2 ring-blue-500/50 shadow-md`
+                    : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                )}
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.95 }}
+                transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+                aria-pressed={isSelected}
+                aria-label={`Select ${mood.label} mood`}
+              >
+                {/* Emoji */}
+                <span className="text-2xl sm:text-3xl">{mood.emoji}</span>
+
+                {/* Selected indicator */}
+                {isSelected && (
+                  <motion.div
+                    className={cn(
+                      'absolute -top-1 -right-1 w-5 h-5 rounded-full',
+                      'flex items-center justify-center',
+                      mood.color,
+                      'text-white text-xs font-bold',
+                      'shadow-sm'
+                    )}
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    transition={{ type: 'spring', stiffness: 500 }}
+                  >
+                    ✓
+                  </motion.div>
+                )}
+              </motion.button>
+
+              {/* Tooltip */}
+              {isHovered && (
                 <motion.div
-                  className={cn(
-                    'absolute top-2 right-2 w-6 h-6 rounded-full',
-                    'flex items-center justify-center',
-                    mood.color,
-                    'text-white text-xs font-bold'
-                  )}
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  transition={{ type: 'spring', stiffness: 500 }}
+                  initial={{ opacity: 0, y: 5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 5 }}
+                  className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-1.5 rounded-lg bg-gray-900 dark:bg-gray-700 text-white text-sm whitespace-nowrap pointer-events-none z-10 shadow-lg"
                 >
-                  ✓
+                  <div className="font-medium">{mood.label}</div>
+                  <div className="text-xs text-gray-300 mt-0.5">{mood.description}</div>
+                  {/* Tooltip arrow */}
+                  <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1">
+                    <div className="w-2 h-2 bg-gray-900 dark:bg-gray-700 rotate-45"></div>
+                  </div>
                 </motion.div>
               )}
-
-              {/* Emoji */}
-              <motion.div
-                className="text-4xl md:text-5xl"
-                whileHover={{ rotate: [0, -10, 10, -10, 0] }}
-                transition={{ duration: 0.5 }}
-              >
-                {mood.emoji}
-              </motion.div>
-
-              {/* Label */}
-              <h3 className="text-base md:text-lg font-semibold text-gray-900 dark:text-gray-100">
-                {mood.label}
-              </h3>
-
-              {/* Description */}
-              <p className="text-xs md:text-sm text-gray-600 dark:text-gray-400 text-center leading-tight">
-                {mood.description}
-              </p>
-
-              {/* Color accent bar at bottom */}
-              <motion.div
-                className={cn(
-                  'absolute bottom-0 left-0 right-0 h-1 rounded-b-xl',
-                  mood.color,
-                  'opacity-0'
-                )}
-                animate={{ opacity: isSelected ? 1 : 0 }}
-                transition={{ duration: 0.2 }}
-              />
-            </motion.button>
+            </div>
           );
         })}
       </div>

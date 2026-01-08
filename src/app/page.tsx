@@ -2,28 +2,26 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ToggleLeft, ToggleRight } from 'lucide-react';
 import MoodSelector from '../components/MoodSelector';
-import NaturalLanguageMoodInput from '../components/NaturalLanguageMoodInput';
+import MovieSearch from '../components/MovieSearch';
 import MovieCard from '../components/MovieCard';
 import DarkModeToggle from '../components/DarkModeToggle';
-import { MoodType, NaturalLanguageMoodResponse } from '../types/mood';
+import { MoodType } from '../types/mood';
 import { Movie } from '../types/movie';
 import { MOODS } from '../config/moods';
 
 export default function HomePage() {
   const [selectedMood, setSelectedMood] = useState<MoodType | null>(null);
-  const [recommendations, setRecommendations] = useState<Movie[] | null>(null);
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [movies, setMovies] = useState<Movie[] | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [inputMode, setInputMode] = useState<'buttons' | 'natural'>('buttons');
-  const [parsedMoodInfo, setParsedMoodInfo] = useState<NaturalLanguageMoodResponse | null>(null);
-  const [preferences, setPreferences] = useState<string[]>([]);
+  const [mode, setMode] = useState<'search' | 'mood' | null>(null);
   const recommendationsRef = useRef<HTMLDivElement>(null);
 
-  // Scroll to recommendations when they're loaded
+  // Scroll to results when they're loaded
   useEffect(() => {
-    if (recommendations && recommendations.length > 0) {
+    if (movies && movies.length > 0) {
       // Wait for animation to complete and DOM to update
       const timer = setTimeout(() => {
         if (recommendationsRef.current) {
@@ -36,7 +34,7 @@ export default function HomePage() {
 
       return () => clearTimeout(timer);
     }
-  }, [recommendations]);
+  }, [movies]);
 
   // Scroll to error section when error occurs
   useEffect(() => {
@@ -54,11 +52,28 @@ export default function HomePage() {
     }
   }, [error]);
 
-  const handleMoodSelect = async (mood: MoodType, prefs?: string[]) => {
+  const handleSearchResults = (searchMovies: Movie[], query: string) => {
+    setMovies(searchMovies);
+    setSearchQuery(query);
+    setMode('search');
+    setSelectedMood(null);
+    setError(null);
+  };
+
+  const handleSearchClear = () => {
+    setMovies(null);
+    setSearchQuery('');
+    setMode(null);
+    setError(null);
+  };
+
+  const handleMoodSelect = async (mood: MoodType) => {
     setSelectedMood(mood);
     setLoading(true);
     setError(null);
-    setRecommendations(null);
+    setMovies(null);
+    setSearchQuery('');
+    setMode('mood');
 
     try {
       const response = await fetch('/api/recommendations', {
@@ -68,7 +83,6 @@ export default function HomePage() {
         },
         body: JSON.stringify({ 
           mood,
-          preferences: prefs || preferences,
         }),
       });
 
@@ -82,13 +96,13 @@ export default function HomePage() {
         throw new Error('Unable to load recommendations. Please try again.');
       }
       
-      const movies = data.movies || [];
+      const moodMovies = data.movies || [];
       
-      if (movies.length === 0) {
+      if (moodMovies.length === 0) {
         setError('No recommendations found. Please try again or select a different mood.');
-        setRecommendations([]);
+        setMovies([]);
       } else {
-        setRecommendations(movies);
+        setMovies(moodMovies);
       }
     } catch (err) {
       console.error('Error fetching recommendations:', err);
@@ -96,23 +110,6 @@ export default function HomePage() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleNaturalLanguageParsed = (parsed: NaturalLanguageMoodResponse) => {
-    setParsedMoodInfo(parsed);
-    setPreferences(parsed.preferences);
-    setSelectedMood(parsed.primaryMood);
-    // Automatically fetch recommendations
-    handleMoodSelect(parsed.primaryMood, parsed.preferences);
-  };
-
-  const handleInputModeToggle = () => {
-    setInputMode(inputMode === 'buttons' ? 'natural' : 'buttons');
-    setSelectedMood(null);
-    setRecommendations(null);
-    setParsedMoodInfo(null);
-    setPreferences([]);
-    setError(null);
   };
 
   return (
@@ -143,75 +140,34 @@ export default function HomePage() {
           </p>
         </motion.section>
 
-        {/* Input Mode Toggle */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.1 }}
-          className="flex justify-center mb-6"
-        >
-          <button
-            onClick={handleInputModeToggle}
-            className="flex items-center gap-3 px-4 py-2 rounded-lg bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 hover:border-blue-500 dark:hover:border-blue-500 transition-colors"
-            aria-label={`Switch to ${inputMode === 'buttons' ? 'natural language' : 'mood buttons'} input`}
-          >
-            {inputMode === 'buttons' ? (
-              <>
-                <ToggleLeft className="w-5 h-5 text-gray-400" />
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Switch to Natural Language
-                </span>
-              </>
-            ) : (
-              <>
-                <ToggleRight className="w-5 h-5 text-blue-500" />
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Switch to Mood Buttons
-                </span>
-              </>
-            )}
-          </button>
-        </motion.div>
-
-        {/* Mood Input Section */}
+        {/* Primary: Search Section */}
         <motion.section
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.2 }}
-          className="mb-12 md:mb-16"
+          className="mb-8 md:mb-10"
         >
-          <AnimatePresence mode="wait">
-            {inputMode === 'buttons' ? (
-              <motion.div
-                key="buttons"
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 20 }}
-                transition={{ duration: 0.3 }}
-              >
-                <MoodSelector
-                  selectedMood={selectedMood}
-                  onMoodSelect={handleMoodSelect}
-                />
-              </motion.div>
-            ) : (
-              <motion.div
-                key="natural"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                transition={{ duration: 0.3 }}
-              >
-                <NaturalLanguageMoodInput
-                  onMoodParsed={handleNaturalLanguageParsed}
-                  onError={setError}
-                />
-              </motion.div>
-            )}
-          </AnimatePresence>
+          <MovieSearch
+            onSearchResults={handleSearchResults}
+            onError={setError}
+            onClear={handleSearchClear}
+          />
         </motion.section>
 
-        {/* Recommendations Section */}
+        {/* Secondary: Mood Filters */}
+        <motion.section
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.3 }}
+          className="mb-12 md:mb-16"
+        >
+          <MoodSelector
+            selectedMood={selectedMood}
+            onMoodSelect={handleMoodSelect}
+          />
+        </motion.section>
+
+        {/* Results Section */}
         <AnimatePresence mode="wait">
           {loading && (
             <motion.section
@@ -224,7 +180,9 @@ export default function HomePage() {
               <div className="flex flex-col items-center justify-center py-16">
                 <div className="w-16 h-16 border-4 border-gray-300 dark:border-gray-600 border-t-blue-500 rounded-full animate-spin mb-4" />
                 <p className="text-lg text-gray-600 dark:text-gray-400">
-                  Finding the perfect recommendations for you...
+                  {mode === 'mood' 
+                    ? 'Finding the perfect recommendations for you...'
+                    : 'Searching for movies...'}
                 </p>
               </div>
             </motion.section>
@@ -262,7 +220,7 @@ export default function HomePage() {
                 <button
                   onClick={() => {
                     setError(null);
-                    if (selectedMood) {
+                    if (selectedMood && mode === 'mood') {
                       handleMoodSelect(selectedMood);
                     }
                   }}
@@ -274,10 +232,10 @@ export default function HomePage() {
             </motion.section>
           )}
 
-          {recommendations && recommendations.length > 0 && (
+          {movies && movies.length > 0 && (
             <motion.section
               ref={recommendationsRef}
-              key="recommendations"
+              key="results"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
@@ -286,41 +244,31 @@ export default function HomePage() {
             >
               <div className="mb-8">
                 <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-2">
-                  Your Recommendations
+                  {mode === 'search' ? 'Search Results' : 'Your Recommendations'}
                 </h2>
                 <div className="space-y-2">
-                  <p className="text-gray-600 dark:text-gray-400">
-                    We found {recommendations.length} perfect match{recommendations.length !== 1 ? 'es' : ''} for your mood
-                  </p>
-                  {parsedMoodInfo && (
+                  {mode === 'search' ? (
+                    <p className="text-gray-600 dark:text-gray-400">
+                      Found {movies.length} result{movies.length !== 1 ? 's' : ''} for &quot;{searchQuery}&quot;
+                    </p>
+                  ) : (
+                    <p className="text-gray-600 dark:text-gray-400">
+                      We found {movies.length} perfect match{movies.length !== 1 ? 'es' : ''} for your {selectedMood && MOODS[selectedMood].label.toLowerCase()} mood
+                    </p>
+                  )}
+                  {mode === 'mood' && selectedMood && (
                     <div className="flex flex-wrap items-center gap-2 pt-2">
-                      <span className="text-sm text-gray-500 dark:text-gray-400">
-                        Detected: {MOODS[parsedMoodInfo.primaryMood].emoji} {MOODS[parsedMoodInfo.primaryMood].label}
+                      <span className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1">
+                        <span className="text-xl">{MOODS[selectedMood].emoji}</span>
+                        <span>{MOODS[selectedMood].label}</span>
                       </span>
-                      {parsedMoodInfo.secondaryMoods.length > 0 && (
-                        <span className="text-sm text-gray-500 dark:text-gray-400">
-                          + {parsedMoodInfo.secondaryMoods.map(m => MOODS[m].emoji).join(' ')}
-                        </span>
-                      )}
-                      {preferences.length > 0 && (
-                        <div className="flex flex-wrap gap-1">
-                          {preferences.map((pref, idx) => (
-                            <span
-                              key={idx}
-                              className="px-2 py-0.5 text-xs rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
-                            >
-                              {pref}
-                            </span>
-                          ))}
-                        </div>
-                      )}
                     </div>
                   )}
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                {recommendations.map((movie, index) => (
+                {movies.map((movie, index) => (
                   <motion.div
                     key={movie.id}
                     initial={{ opacity: 0, y: 20 }}
@@ -334,7 +282,7 @@ export default function HomePage() {
             </motion.section>
           )}
 
-          {recommendations && recommendations.length === 0 && (
+          {movies && movies.length === 0 && (
             <motion.section
               key="empty"
               initial={{ opacity: 0 }}
@@ -344,7 +292,9 @@ export default function HomePage() {
             >
               <div className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-8 text-center">
                 <p className="text-lg text-gray-600 dark:text-gray-400">
-                  No recommendations found. Try selecting a different mood!
+                  {mode === 'search' 
+                    ? `No movies found for "${searchQuery}". Try a different search term!`
+                    : 'No recommendations found. Try selecting a different mood!'}
                 </p>
               </div>
             </motion.section>
