@@ -10,7 +10,7 @@ export default function DarkModeToggle() {
   if (!mounted) {
     // Return a placeholder to prevent layout shift
     return (
-      <div className="w-12 h-6 rounded-full bg-gray-200 dark:bg-gray-700" />
+      <div className="w-10 h-10 rounded-lg bg-gray-200 dark:bg-gray-700" />
     );
   }
 
@@ -20,45 +20,32 @@ export default function DarkModeToggle() {
     <motion.button
       onClick={toggleTheme}
       className={`
-        relative flex items-center justify-between
-        w-12 h-6 rounded-full
-        bg-gray-200 dark:bg-gray-700
-        border-2 border-gray-300 dark:border-gray-600
-        transition-colors duration-300
+        flex items-center justify-center
+        w-10 h-10 rounded-lg
+        bg-white dark:bg-gray-800
+        border border-gray-200 dark:border-gray-700
+        hover:bg-gray-50 dark:hover:bg-gray-700
+        transition-colors duration-200
         focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
         focus:ring-offset-white dark:focus:ring-offset-gray-900
         cursor-pointer
+        shadow-sm
       `}
       aria-label={`Switch to ${isDark ? 'light' : 'dark'} mode`}
       whileHover={{ scale: 1.05 }}
       whileTap={{ scale: 0.95 }}
     >
-      {/* Toggle circle */}
       <motion.div
-        className={`
-          absolute top-0.5
-          w-5 h-5 rounded-full
-          bg-white dark:bg-gray-800
-          shadow-md
-          flex items-center justify-center
-        `}
-        initial={false}
-        animate={{
-          x: isDark ? 26 : 2,
-        }}
-        transition={{
-          type: 'spring',
-          stiffness: 500,
-          damping: 30,
-        }}
-        style={{
-          left: '2px',
-        }}
+        key={theme}
+        initial={{ rotate: -180, opacity: 0 }}
+        animate={{ rotate: 0, opacity: 1 }}
+        exit={{ rotate: 180, opacity: 0 }}
+        transition={{ duration: 0.3 }}
       >
         {isDark ? (
-          <Moon className="w-3 h-3 text-gray-700 dark:text-gray-300" />
+          <Sun className="w-5 h-5 text-yellow-500" />
         ) : (
-          <Sun className="w-3 h-3 text-yellow-500" />
+          <Moon className="w-5 h-5 text-gray-700 dark:text-gray-300" />
         )}
       </motion.div>
     </motion.button>
