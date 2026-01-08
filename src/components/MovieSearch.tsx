@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, X, Loader2, AlertCircle } from 'lucide-react';
+import { Search, X, Loader2, AlertCircle, Sparkles } from 'lucide-react';
 import { Movie } from '../types/movie';
 import { cn } from '../lib/utils';
 
@@ -11,6 +11,17 @@ interface MovieSearchProps {
   onError?: (error: string) => void;
   onClear?: () => void;
 }
+
+const POPULAR_SEARCHES = [
+  'The Matrix',
+  'Inception',
+  'Interstellar',
+  'The Dark Knight',
+  'Pulp Fiction',
+  'Fight Club',
+  'The Shawshank Redemption',
+  'Forrest Gump',
+];
 
 export default function MovieSearch({
   onSearchResults,
@@ -70,6 +81,34 @@ export default function MovieSearch({
     inputRef.current?.focus();
   };
 
+  const handleSuggestionClick = async (suggestion: string) => {
+    setInput(suggestion);
+    setError(null);
+    setIsLoading(true);
+
+    try {
+      const response = await fetch(`/api/search?query=${encodeURIComponent(suggestion.trim())}`);
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        const errorMsg = data.error || 'Failed to search movies';
+        throw new Error(errorMsg);
+      }
+
+      const movies: Movie[] = data.movies || [];
+      onSearchResults(movies, data.query || suggestion.trim());
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to search movies. Please try again.';
+      setError(errorMessage);
+      if (onError) {
+        onError(errorMessage);
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="w-full space-y-4">
       {/* Input Field */}
@@ -89,7 +128,7 @@ export default function MovieSearch({
                 handleClear();
               }
             }}
-            placeholder="Search for movies..."
+            placeholder="Search for movies, TV shows, and more..."
             className={cn(
               'w-full pl-12 pr-12 py-4 rounded-xl',
               'bg-white dark:bg-gray-800',
@@ -137,6 +176,35 @@ export default function MovieSearch({
           >
             <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
             <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Search Suggestions */}
+      <AnimatePresence>
+        {!input && !isLoading && !error && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="space-y-2"
+          >
+            <p className="text-sm text-gray-600 dark:text-gray-400 flex items-center gap-2">
+              <Sparkles className="w-4 h-4" />
+              Popular searches:
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {POPULAR_SEARCHES.map((suggestion, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => handleSuggestionClick(suggestion)}
+                  className="px-3 py-1.5 text-sm rounded-lg bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors"
+                >
+                  {suggestion}
+                </button>
+              ))}
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
