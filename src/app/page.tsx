@@ -81,6 +81,7 @@ export default function HomePage() {
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include', // Include cookies for session token
         body: JSON.stringify({ 
           mood,
         }),

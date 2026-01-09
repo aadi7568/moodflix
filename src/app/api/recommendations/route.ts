@@ -4,6 +4,8 @@ import { aiService } from '@/lib/ai-service';
 import { MOODS } from '@/config/moods';
 import { MoodType } from '@/types/mood';
 import { Movie, MovieDetails } from '@/types/movie';
+import { getOrCreateSessionToken, setSessionTokenCookie } from '@/lib/anonymous-auth';
+import { rateLimitMiddleware } from '@/lib/rate-limit';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,6 +14,15 @@ const ENABLE_AI_RERANKING = process.env.ENABLE_AI_RERANKING !== 'false'; // Defa
 const AI_RERANKING_TIMEOUT = 30000; // 30 seconds timeout for AI analysis
 
 export async function POST(request: NextRequest) {
+  // Rate limiting with anonymous session tokens
+  const rateLimitResult = await rateLimitMiddleware(request, 'recommendations');
+  if (!rateLimitResult.success) {
+    return rateLimitResult.response!;
+  }
+
+  // Get or create anonymous session token
+  const { token, isNew } = await getOrCreateSessionToken(request);
+
   try {
     const body = await request.json();
     const { mood, preferences, parsedMoodInfo } = body;
@@ -251,7 +262,24 @@ export async function POST(request: NextRequest) {
       response.usedAIReranking = usedAIReranking;
     }
 
-    return NextResponse.json(response, { status: 200 });
+    // Create response with session token and rate limit headers
+    const httpResponse = NextResponse.json(response, { status: 200 });
+
+    // Set cookie if new token was created
+    if (isNew) {
+      const cookie = setSessionTokenCookie(token);
+      httpResponse.cookies.set(cookie.name, cookie.value, cookie.options);
+      // Also include in header for client-side storage fallback
+      httpResponse.headers.set('x-session-token', token);
+    }
+
+    // Add rate limit headers
+    if (rateLimitResult.remaining !== undefined && rateLimitResult.reset !== undefined) {
+      httpResponse.headers.set('X-RateLimit-Remaining', rateLimitResult.remaining.toString());
+      httpResponse.headers.set('X-RateLimit-Reset', rateLimitResult.reset.toString());
+    }
+
+    return httpResponse;
   } catch (error) {
     console.error('Error generating recommendations:', error);
 

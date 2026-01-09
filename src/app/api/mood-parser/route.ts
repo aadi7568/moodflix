@@ -1,12 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { aiService } from '@/lib/ai-service';
 import { MoodType } from '@/types/mood';
+import { getOrCreateSessionToken, setSessionTokenCookie } from '@/lib/anonymous-auth';
+import { rateLimitMiddleware } from '@/lib/rate-limit';
 
 export const dynamic = 'force-dynamic';
 
 const MAX_TEXT_LENGTH = 500;
 
 export async function POST(request: NextRequest) {
+  // Rate limiting with anonymous session tokens
+  const rateLimitResult = await rateLimitMiddleware(request, 'mood-parser');
+  if (!rateLimitResult.success) {
+    return rateLimitResult.response!;
+  }
+
+  // Get or create anonymous session token
+  const { token, isNew } = await getOrCreateSessionToken(request);
+
   try {
     const body = await request.json();
     const { text } = body;
@@ -79,7 +90,8 @@ export async function POST(request: NextRequest) {
     // Log parsing attempt for debugging
     console.log(`Mood parsed: "${trimmedText}" → ${parsedMood.primaryMood} (confidence: ${parsedMood.confidence})`);
 
-    return NextResponse.json(
+    // Set session token cookie if it's new
+    const response = NextResponse.json(
       {
         success: true,
         primaryMood: parsedMood.primaryMood,
@@ -91,6 +103,22 @@ export async function POST(request: NextRequest) {
       },
       { status: 200 }
     );
+
+    // Set cookie if new token was created
+    if (isNew) {
+      const cookie = setSessionTokenCookie(token);
+      response.cookies.set(cookie.name, cookie.value, cookie.options);
+      // Also include in header for client-side storage fallback
+      response.headers.set('x-session-token', token);
+    }
+
+    // Add rate limit headers
+    if (rateLimitResult.remaining !== undefined && rateLimitResult.reset !== undefined) {
+      response.headers.set('X-RateLimit-Remaining', rateLimitResult.remaining.toString());
+      response.headers.set('X-RateLimit-Reset', rateLimitResult.reset.toString());
+    }
+
+    return response;
   } catch (error) {
     console.error('Error parsing mood:', error);
 
