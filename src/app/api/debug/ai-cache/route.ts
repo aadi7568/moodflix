@@ -5,27 +5,31 @@ export const dynamic = 'force-dynamic';
 
 /**
  * Debug endpoint to view AI cache status and statistics
- * Only available in development mode
+ * Only available when explicitly enabled via environment variable
  */
 export async function GET() {
-  // Only allow in development
-  if (process.env.NODE_ENV === 'production') {
+  // Use explicit feature flag instead of NODE_ENV
+  const ENABLE_DEBUG = process.env.ENABLE_DEBUG === 'true';
+  
+  if (!ENABLE_DEBUG) {
     return NextResponse.json(
-      { error: 'Not available in production' },
+      { error: 'Debug endpoint is disabled' },
       { status: 403 }
     );
   }
 
   try {
     const stats = aiService.getCacheStats();
-    const hasGeminiKey = !!process.env.GEMINI_API_KEY;
 
+    // Don't expose sensitive configuration
     return NextResponse.json(
       {
-        aiServiceConfigured: hasGeminiKey,
-        cache: stats,
-        environment: process.env.NODE_ENV,
-        enableAIReranking: process.env.ENABLE_AI_RERANKING !== 'false',
+        cache: {
+          totalEntries: stats.totalEntries,
+          validEntries: stats.validEntries,
+          expiredEntries: stats.expiredEntries,
+        },
+        // Don't expose API key presence or other sensitive config
       },
       { status: 200 }
     );

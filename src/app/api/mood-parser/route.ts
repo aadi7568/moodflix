@@ -3,10 +3,12 @@ import { aiService } from '@/lib/ai-service';
 import { MoodType } from '@/types/mood';
 import { getOrCreateSessionToken, setSessionTokenCookie } from '@/lib/anonymous-auth';
 import { rateLimitMiddleware } from '@/lib/rate-limit';
+import { handleApiError } from '@/lib/error-handler';
+import { sanitizeForLog, validateBodySize } from '@/lib/input-sanitizer';
+import { moodParserSchema } from '@/lib/validators';
+import { z } from 'zod';
 
 export const dynamic = 'force-dynamic';
-
-const MAX_TEXT_LENGTH = 500;
 
 export async function POST(request: NextRequest) {
   // Rate limiting with anonymous session tokens
@@ -19,41 +21,15 @@ export async function POST(request: NextRequest) {
   const { token, isNew } = await getOrCreateSessionToken(request);
 
   try {
-    const body = await request.json();
-    const { text } = body;
-
-    // Validate input
-    if (!text || typeof text !== 'string') {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Text is required and must be a string',
-        },
-        { status: 400 }
-      );
-    }
-
-    const trimmedText = text.trim();
-
-    if (trimmedText.length === 0) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Text cannot be empty',
-        },
-        { status: 400 }
-      );
-    }
-
-    if (trimmedText.length > MAX_TEXT_LENGTH) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `Text must be ${MAX_TEXT_LENGTH} characters or less`,
-        },
-        { status: 400 }
-      );
-    }
+    // Validate request body size
+    const bodyText = await request.text();
+    validateBodySize(bodyText, 10240); // 10KB max
+    
+    const body = JSON.parse(bodyText);
+    
+    // Validate with Zod schema
+    const validated = moodParserSchema.parse(body);
+    const trimmedText = validated.text.trim();
 
     // Parse mood using AI service
     let parsedMood = await aiService.parseNaturalLanguageMood(trimmedText);
@@ -87,8 +63,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Log parsing attempt for debugging
-    console.log(`Mood parsed: "${trimmedText}" → ${parsedMood.primaryMood} (confidence: ${parsedMood.confidence})`);
+    // Log parsing attempt for debugging (sanitized)
+    if (process.env.NODE_ENV === 'development') {
+      const sanitizedLog = sanitizeForLog(trimmedText, 50);
+      console.log(`Mood parsed: "${sanitizedLog}" → ${parsedMood.primaryMood} (confidence: ${parsedMood.confidence})`);
+    }
 
     // Set session token cookie if it's new
     const response = NextResponse.json(
@@ -120,17 +99,25 @@ export async function POST(request: NextRequest) {
 
     return response;
   } catch (error) {
-    console.error('Error parsing mood:', error);
+    // Handle validation errors separately
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Invalid input data',
+          details: process.env.NODE_ENV === 'development' ? error.issues : undefined,
+        },
+        { status: 400 }
+      );
+    }
 
+    const { message, status } = handleApiError(error, 'mood-parser', 'Failed to parse mood');
     return NextResponse.json(
       {
         success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : 'Failed to parse mood',
+        error: message,
       },
-      { status: 500 }
+      { status }
     );
   }
 }

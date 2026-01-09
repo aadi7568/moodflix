@@ -6,6 +6,10 @@ import { MoodType } from '@/types/mood';
 import { Movie, MovieDetails } from '@/types/movie';
 import { getOrCreateSessionToken, setSessionTokenCookie } from '@/lib/anonymous-auth';
 import { rateLimitMiddleware } from '@/lib/rate-limit';
+import { recommendationsSchema } from '@/lib/validators';
+import { handleApiError } from '@/lib/error-handler';
+import { validateBodySize } from '@/lib/input-sanitizer';
+import { z } from 'zod';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,43 +28,15 @@ export async function POST(request: NextRequest) {
   const { token, isNew } = await getOrCreateSessionToken(request);
 
   try {
-    const body = await request.json();
-    const { mood, preferences, parsedMoodInfo } = body;
-
-    // Validate mood
-    if (!mood || typeof mood !== 'string') {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Mood is required and must be a string',
-        },
-        { status: 400 }
-      );
-    }
-
-    // Validate mood type
-    const validMoods: MoodType[] = [
-      'happy',
-      'sad',
-      'excited',
-      'relaxed',
-      'romantic',
-      'adventurous',
-      'scared',
-      'thoughtful',
-      'energetic',
-      'nostalgic',
-    ];
-
-    if (!validMoods.includes(mood as MoodType)) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `Invalid mood. Must be one of: ${validMoods.join(', ')}`,
-        },
-        { status: 400 }
-      );
-    }
+    // Validate request body size
+    const bodyText = await request.text();
+    validateBodySize(bodyText, 10240); // 10KB max
+    
+    const body = JSON.parse(bodyText);
+    
+    // Validate with Zod schema
+    const validated = recommendationsSchema.parse(body);
+    const { mood, preferences, parsedMoodInfo } = validated;
 
     const moodType = mood as MoodType;
     const moodConfig = MOODS[moodType];
@@ -246,9 +222,12 @@ export async function POST(request: NextRequest) {
     };
 
     // Store preferences for future filtering implementation
-    if (preferences && Array.isArray(preferences) && preferences.length > 0) {
+    if (preferences && Array.isArray(preferences) && preferences.length > 0 && preferences.length <= 20) {
       response.preferences = preferences;
-      console.log('User preferences stored:', preferences);
+      // Only log in development
+      if (process.env.NODE_ENV === 'development') {
+        console.log('User preferences stored:', preferences);
+      }
     }
 
     // Include parsed mood info if available
@@ -256,8 +235,9 @@ export async function POST(request: NextRequest) {
       response.parsedMoodInfo = parsedMoodInfo;
     }
 
-    // Include emotional match scores if available (for debugging/transparency)
-    if (emotionalMatchScores && process.env.NODE_ENV === 'development') {
+    // Include emotional match scores if available (only in development with explicit flag)
+    const ENABLE_DEBUG_DATA = process.env.ENABLE_DEBUG_DATA === 'true';
+    if (emotionalMatchScores && ENABLE_DEBUG_DATA) {
       response.emotionalMatchScores = emotionalMatchScores;
       response.usedAIReranking = usedAIReranking;
     }
@@ -281,17 +261,25 @@ export async function POST(request: NextRequest) {
 
     return httpResponse;
   } catch (error) {
-    console.error('Error generating recommendations:', error);
+    // Handle validation errors separately
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Invalid request data',
+          details: process.env.NODE_ENV === 'development' ? error.issues : undefined,
+        },
+        { status: 400 }
+      );
+    }
 
+    const { message, status } = handleApiError(error, 'recommendations', 'Failed to generate recommendations');
     return NextResponse.json(
       {
         success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : 'Failed to generate recommendations',
+        error: message,
       },
-      { status: 500 }
+      { status }
     );
   }
 }
