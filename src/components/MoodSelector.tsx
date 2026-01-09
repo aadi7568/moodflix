@@ -40,11 +40,18 @@ export default function MoodSelector({
           const isHovered = hoveredMood === mood.id;
 
           return (
-            <div key={mood.id} className="relative group" style={{ zIndex: isHovered ? 50 : 'auto' }}>
+            <div 
+              key={mood.id} 
+              className="relative"
+              style={{ 
+                zIndex: isHovered ? 50 : 1,
+                isolation: 'isolate' // Creates a new stacking context
+              }}
+              onMouseEnter={() => setHoveredMood(mood.id)}
+              onMouseLeave={() => setHoveredMood(null)}
+            >
               <motion.button
                 onClick={() => onMoodSelect(mood.id)}
-                onMouseEnter={() => setHoveredMood(mood.id)}
-                onMouseLeave={() => setHoveredMood(null)}
                 className={cn(
                   'relative w-12 h-12 sm:w-14 sm:h-14 rounded-full',
                   'flex items-center justify-center',
@@ -88,20 +95,21 @@ export default function MoodSelector({
                 )}
               </motion.button>
 
-              {/* Tooltip */}
+              {/* Tooltip - only shows for this specific mood */}
               {isHovered && (
                 <motion.div
                   initial={{ opacity: 0, y: 5 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: 5 }}
-                  className="absolute bottom-full left-1/2 mb-2 px-3 py-1.5 rounded-lg bg-gray-900 dark:bg-gray-700 text-white text-sm whitespace-nowrap pointer-events-none z-50 shadow-lg"
+                  className="absolute bottom-full left-1/2 mb-2 px-3 py-1.5 rounded-lg bg-gray-900 dark:bg-gray-700 text-white text-sm whitespace-nowrap pointer-events-none z-[60] shadow-lg"
                   style={{ 
                     transform: 'translateX(-50%)',
+                    willChange: 'transform, opacity'
                   }}
                 >
                   <div className="font-medium">{mood.label}</div>
                   <div className="text-xs text-gray-300 mt-0.5">{mood.description}</div>
-                  {/* Tooltip arrow - positioned relative to tooltip center */}
+                  {/* Tooltip arrow - centered below tooltip */}
                   <div 
                     className="absolute top-full left-1/2 -mt-1 pointer-events-none"
                     style={{
