@@ -3,6 +3,10 @@ import { tmdbService } from '@/lib/tmdb';
 import { Movie } from '@/types/movie';
 import { getOrCreateSessionToken, setSessionTokenCookie } from '@/lib/anonymous-auth';
 import { rateLimitMiddleware } from '@/lib/rate-limit';
+import { searchQuerySchema } from '@/lib/validators';
+import { handleApiError } from '@/lib/error-handler';
+import { sanitizeSearchQuery } from '@/lib/input-sanitizer';
+import { z } from 'zod';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,41 +24,23 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const query = searchParams.get('query');
 
-    // Validate query
-    if (!query || typeof query !== 'string' || query.trim().length === 0) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Search query is required',
-          movies: [],
-        },
-        { status: 400 }
-      );
-    }
-
-    // Trim and validate query length
-    const trimmedQuery = query.trim();
-    if (trimmedQuery.length < 1) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Search query cannot be empty',
-          movies: [],
-        },
-        { status: 400 }
-      );
-    }
+    // Validate with Zod schema
+    const validated = searchQuerySchema.parse({ query: query || '' });
+    const trimmedQuery = validated.query.trim();
+    
+    // Sanitize query before using
+    const sanitizedQuery = sanitizeSearchQuery(trimmedQuery, 200);
 
     // Search for movies
     let searchResponse;
     try {
-      searchResponse = await tmdbService.searchMovies(trimmedQuery, 1);
+      searchResponse = await tmdbService.searchMovies(sanitizedQuery, 1);
     } catch (error) {
-      console.error('Error searching movies:', error);
+      const { message } = handleApiError(error, 'search', 'Failed to search movies. Please try again.');
       return NextResponse.json(
         {
           success: false,
-          error: 'Failed to search movies. Please try again.',
+          error: message,
           movies: [],
         },
         { status: 500 }
@@ -69,7 +55,7 @@ export async function GET(request: NextRequest) {
         success: true,
         movies,
         count: movies.length,
-        query: trimmedQuery,
+        query: sanitizedQuery,
       },
       { status: 200 }
     );
@@ -90,18 +76,27 @@ export async function GET(request: NextRequest) {
 
     return response;
   } catch (error) {
-    console.error('Error in search endpoint:', error);
+    // Handle validation errors separately
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Invalid search query',
+          details: process.env.NODE_ENV === 'development' ? error.issues : undefined,
+          movies: [],
+        },
+        { status: 400 }
+      );
+    }
 
+    const { message, status } = handleApiError(error, 'search', 'Failed to process search request');
     return NextResponse.json(
       {
         success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : 'Failed to process search request',
+        error: message,
         movies: [],
       },
-      { status: 500 }
+      { status }
     );
   }
 }

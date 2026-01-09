@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { Movie, MovieDetails } from '../types/movie';
 import { MoodType, EmotionalTone, MovieEmotionalProfile, NaturalLanguageMoodResponse } from '../types/mood';
 import { MOODS } from '../config/moods';
+import { sanitizeForPrompt } from './input-sanitizer';
 
 // Schema for structured AI response
 const EmotionalToneSchema = z.object({
@@ -271,11 +272,19 @@ Return your response as a JSON object with the following structure:
     }
 
     try {
+      // Sanitize user input to prevent prompt injection
+      const sanitizedText = sanitizeForPrompt(text, 500);
+      
+      if (sanitizedText.length === 0) {
+        // If sanitization removed everything, fallback to keyword parsing
+        return this.parseMoodByKeywords(text);
+      }
+
       const moodDescriptions = Object.values(MOODS).map(m => `${m.id}: ${m.description}`).join('\n');
 
       const prompt = `Analyze this user's natural language mood description and map it to movie moods.
 
-User input: "${text}"
+User input: "${sanitizedText}"
 
 Available moods:
 ${moodDescriptions}

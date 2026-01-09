@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { tmdbService } from '@/lib/tmdb';
 import { getOrCreateSessionToken, setSessionTokenCookie } from '@/lib/anonymous-auth';
 import { rateLimitMiddleware } from '@/lib/rate-limit';
+import { trendingParamsSchema } from '@/lib/validators';
+import { handleApiError } from '@/lib/error-handler';
+import { z } from 'zod';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,29 +20,14 @@ export async function GET(request: NextRequest) {
 
   try {
     const searchParams = request.nextUrl.searchParams;
-    const mediaType = (searchParams.get('mediaType') as 'movie' | 'tv' | 'all') || 'all';
-    const timeWindow = (searchParams.get('timeWindow') as 'day' | 'week') || 'day';
-
-    // Validate query parameters
-    if (mediaType && !['movie', 'tv', 'all'].includes(mediaType)) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Invalid mediaType. Must be "movie", "tv", or "all"',
-        },
-        { status: 400 }
-      );
-    }
-
-    if (timeWindow && !['day', 'week'].includes(timeWindow)) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Invalid timeWindow. Must be "day" or "week"',
-        },
-        { status: 400 }
-      );
-    }
+    
+    // Validate with Zod schema
+    const validated = trendingParamsSchema.parse({
+      mediaType: searchParams.get('mediaType') || 'all',
+      timeWindow: searchParams.get('timeWindow') || 'day',
+    });
+    
+    const { mediaType, timeWindow } = validated;
 
     // Fetch trending content from TMDB
     const tmdbResponse = await tmdbService.getTrending(mediaType, timeWindow);
@@ -72,14 +60,25 @@ export async function GET(request: NextRequest) {
 
     return httpResponse;
   } catch (error) {
-    console.error('Error fetching trending content:', error);
-    
+    // Handle validation errors separately
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Invalid query parameters',
+          details: process.env.NODE_ENV === 'development' ? error.issues : undefined,
+        },
+        { status: 400 }
+      );
+    }
+
+    const { message, status } = handleApiError(error, 'trending', 'Failed to fetch trending content');
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to fetch trending content',
+        error: message,
       },
-      { status: 500 }
+      { status }
     );
   }
 }
