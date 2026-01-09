@@ -1,9 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { tmdbService } from '@/lib/tmdb';
+import { getOrCreateSessionToken, setSessionTokenCookie } from '@/lib/anonymous-auth';
+import { rateLimitMiddleware } from '@/lib/rate-limit';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
+  // Rate limiting with anonymous session tokens
+  const rateLimitResult = await rateLimitMiddleware(request, 'trending');
+  if (!rateLimitResult.success) {
+    return rateLimitResult.response!;
+  }
+
+  // Get or create anonymous session token
+  const { token, isNew } = await getOrCreateSessionToken(request);
+
   try {
     const searchParams = request.nextUrl.searchParams;
     const mediaType = (searchParams.get('mediaType') as 'movie' | 'tv' | 'all') || 'all';
@@ -31,18 +42,35 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch trending content from TMDB
-    const response = await tmdbService.getTrending(mediaType, timeWindow);
+    const tmdbResponse = await tmdbService.getTrending(mediaType, timeWindow);
 
-    return NextResponse.json(
+    // Create response with session token and rate limit headers
+    const httpResponse = NextResponse.json(
       {
         success: true,
-        data: response.results,
-        page: response.page,
-        totalPages: response.total_pages,
-        totalResults: response.total_results,
+        data: tmdbResponse.results,
+        page: tmdbResponse.page,
+        totalPages: tmdbResponse.total_pages,
+        totalResults: tmdbResponse.total_results,
       },
       { status: 200 }
     );
+
+    // Set cookie if new token was created
+    if (isNew) {
+      const cookie = setSessionTokenCookie(token);
+      httpResponse.cookies.set(cookie.name, cookie.value, cookie.options);
+      // Also include in header for client-side storage fallback
+      httpResponse.headers.set('x-session-token', token);
+    }
+
+    // Add rate limit headers
+    if (rateLimitResult.remaining !== undefined && rateLimitResult.reset !== undefined) {
+      httpResponse.headers.set('X-RateLimit-Remaining', rateLimitResult.remaining.toString());
+      httpResponse.headers.set('X-RateLimit-Reset', rateLimitResult.reset.toString());
+    }
+
+    return httpResponse;
   } catch (error) {
     console.error('Error fetching trending content:', error);
     

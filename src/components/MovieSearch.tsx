@@ -50,7 +50,9 @@ export default function MovieSearch({
     setError(null);
 
     try {
-      const response = await fetch(`/api/search?query=${encodeURIComponent(input.trim())}`);
+      const response = await fetch(`/api/search?query=${encodeURIComponent(input.trim())}`, {
+        credentials: 'include', // Include cookies for session token
+      });
 
       const data = await response.json();
 
@@ -87,7 +89,9 @@ export default function MovieSearch({
     setIsLoading(true);
 
     try {
-      const response = await fetch(`/api/search?query=${encodeURIComponent(suggestion.trim())}`);
+      const response = await fetch(`/api/search?query=${encodeURIComponent(suggestion.trim())}`, {
+        credentials: 'include', // Include cookies for session token
+      });
 
       const data = await response.json();
 

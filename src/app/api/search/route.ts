@@ -1,10 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { tmdbService } from '@/lib/tmdb';
 import { Movie } from '@/types/movie';
+import { getOrCreateSessionToken, setSessionTokenCookie } from '@/lib/anonymous-auth';
+import { rateLimitMiddleware } from '@/lib/rate-limit';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
+  // Rate limiting with anonymous session tokens
+  const rateLimitResult = await rateLimitMiddleware(request, 'search');
+  if (!rateLimitResult.success) {
+    return rateLimitResult.response!;
+  }
+
+  // Get or create anonymous session token
+  const { token, isNew } = await getOrCreateSessionToken(request);
+
   try {
     const searchParams = request.nextUrl.searchParams;
     const query = searchParams.get('query');
@@ -52,8 +63,8 @@ export async function GET(request: NextRequest) {
 
     const movies: Movie[] = searchResponse.results || [];
 
-    // Return results
-    return NextResponse.json(
+    // Create response with session token and rate limit headers
+    const response = NextResponse.json(
       {
         success: true,
         movies,
@@ -62,6 +73,22 @@ export async function GET(request: NextRequest) {
       },
       { status: 200 }
     );
+
+    // Set cookie if new token was created
+    if (isNew) {
+      const cookie = setSessionTokenCookie(token);
+      response.cookies.set(cookie.name, cookie.value, cookie.options);
+      // Also include in header for client-side storage fallback
+      response.headers.set('x-session-token', token);
+    }
+
+    // Add rate limit headers
+    if (rateLimitResult.remaining !== undefined && rateLimitResult.reset !== undefined) {
+      response.headers.set('X-RateLimit-Remaining', rateLimitResult.remaining.toString());
+      response.headers.set('X-RateLimit-Reset', rateLimitResult.reset.toString());
+    }
+
+    return response;
   } catch (error) {
     console.error('Error in search endpoint:', error);
 
