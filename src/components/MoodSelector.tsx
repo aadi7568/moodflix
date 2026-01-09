@@ -40,7 +40,7 @@ export default function MoodSelector({
           const isHovered = hoveredMood === mood.id;
 
           return (
-            <div key={mood.id} className="relative group overflow-visible">
+            <div key={mood.id} className="relative group" style={{ zIndex: isHovered ? 50 : 'auto' }}>
               <motion.button
                 onClick={() => onMoodSelect(mood.id)}
                 onMouseEnter={() => setHoveredMood(mood.id)}
@@ -52,12 +52,10 @@ export default function MoodSelector({
                   'bg-white dark:bg-gray-800',
                   'shadow-sm hover:shadow-md',
                   'focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2',
-                  'overflow-visible',
                   isSelected
                     ? `${borderColorMap[mood.color] || 'border-gray-500'} ring-2 ring-offset-2 ring-blue-500/50 shadow-md`
                     : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
                 )}
-                style={{ overflow: 'visible' }}
                 whileHover={{ scale: 1.1 }}
                 whileTap={{ scale: 0.95 }}
                 transition={{ type: 'spring', stiffness: 300, damping: 20 }}
@@ -96,12 +94,20 @@ export default function MoodSelector({
                   initial={{ opacity: 0, y: 5 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: 5 }}
-                  className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-1.5 rounded-lg bg-gray-900 dark:bg-gray-700 text-white text-sm whitespace-nowrap pointer-events-none z-10 shadow-lg"
+                  className="absolute bottom-full left-1/2 mb-2 px-3 py-1.5 rounded-lg bg-gray-900 dark:bg-gray-700 text-white text-sm whitespace-nowrap pointer-events-none z-50 shadow-lg"
+                  style={{ 
+                    transform: 'translateX(-50%)',
+                  }}
                 >
                   <div className="font-medium">{mood.label}</div>
                   <div className="text-xs text-gray-300 mt-0.5">{mood.description}</div>
-                  {/* Tooltip arrow */}
-                  <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1">
+                  {/* Tooltip arrow - positioned relative to tooltip center */}
+                  <div 
+                    className="absolute top-full left-1/2 -mt-1 pointer-events-none"
+                    style={{
+                      transform: 'translateX(-50%)',
+                    }}
+                  >
                     <div className="w-2 h-2 bg-gray-900 dark:bg-gray-700 rotate-45"></div>
                   </div>
                 </motion.div>
