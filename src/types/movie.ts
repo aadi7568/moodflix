@@ -22,6 +22,8 @@ export interface Movie {
   media_type: 'movie' | 'tv';
   name?: string;
   first_air_date?: string;
+  imdb_id?: string | null;
+  imdb_url?: string | null;
 }
 
 export interface MovieDetails extends Movie {

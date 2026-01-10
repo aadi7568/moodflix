@@ -148,6 +148,81 @@ class TMDBService {
 
     return results;
   }
+
+  /**
+   * Get similar movies for a given movie ID
+   * @param movieId - The TMDB movie ID
+   * @param page - Page number (default: 1)
+   * @returns TMDB response with similar movies
+   */
+  async getSimilarMovies(movieId: number, page: number = 1): Promise<TMDBResponse> {
+    return this.makeRequest<TMDBResponse>(`/movie/${movieId}/similar`, {
+      page,
+    });
+  }
+
+  /**
+   * Get external IDs (including IMDb ID) for a movie
+   * @param movieId - The TMDB movie ID
+   * @returns External IDs object with imdb_id and other IDs
+   */
+  async getMovieExternalIds(movieId: number): Promise<{ imdb_id: string | null; [key: string]: unknown }> {
+    return this.makeRequest<{ imdb_id: string | null; [key: string]: unknown }>(`/movie/${movieId}/external_ids`);
+  }
+
+  /**
+   * Batch fetch external IDs for multiple movies
+   * @param movieIds - Array of movie IDs
+   * @param delayMs - Delay between batches in milliseconds (default: 100)
+   * @returns Map of movie ID to external IDs object
+   */
+  async getMoviesExternalIdsBatch(
+    movieIds: number[],
+    delayMs: number = 100
+  ): Promise<Map<number, { imdb_id: string | null }>> {
+    const results = new Map<number, { imdb_id: string | null }>();
+    
+    // Process in smaller batches to respect rate limits
+    const BATCH_SIZE = 5;
+    
+    for (let i = 0; i < movieIds.length; i += BATCH_SIZE) {
+      const batch = movieIds.slice(i, i + BATCH_SIZE);
+      
+      try {
+        // Fetch external IDs for batch in parallel
+        const batchPromises = batch.map(async (movieId) => {
+          try {
+            const externalIds = await this.getMovieExternalIds(movieId);
+            return { movieId, externalIds: { imdb_id: externalIds.imdb_id || null } };
+          } catch (error) {
+            console.error(`Error fetching external IDs for movie ${movieId}:`, error);
+            return { movieId, externalIds: { imdb_id: null } };
+          }
+        });
+
+        const batchResults = await Promise.all(batchPromises);
+        
+        batchResults.forEach((result) => {
+          results.set(result.movieId, result.externalIds);
+        });
+
+        // Add delay between batches to respect rate limits
+        if (i + BATCH_SIZE < movieIds.length) {
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+        }
+      } catch (error) {
+        console.error(`Error in batch external IDs fetch:`, error);
+        // Continue with next batch, set null for failed ones
+        batch.forEach(movieId => {
+          if (!results.has(movieId)) {
+            results.set(movieId, { imdb_id: null });
+          }
+        });
+      }
+    }
+
+    return results;
+  }
 }
 
 // Lazy initialization to avoid errors during build time

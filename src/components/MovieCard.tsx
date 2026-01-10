@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import Image from 'next/image';
+import { ExternalLink } from 'lucide-react';
 import { Movie } from '../types/movie';
 import { getImageUrl, getRatingColor } from '../lib/utils';
 
@@ -116,6 +117,22 @@ export default function MovieCard({ movie }: MovieCardProps) {
         <p className="text-sm text-gray-600 dark:text-gray-300 line-clamp-3 leading-relaxed">
           {truncatedOverview}
         </p>
+
+        {/* IMDb Link */}
+        {movie.imdb_url && (
+          <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
+            <a
+              href={movie.imdb_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <ExternalLink className="w-4 h-4" />
+              <span>View on IMDb</span>
+            </a>
+          </div>
+        )}
       </div>
     </motion.div>
   );

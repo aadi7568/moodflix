@@ -53,3 +53,30 @@ export function getRatingColor(rating: number): string {
   return 'text-red-500';
 }
 
+/**
+ * Constructs an IMDb URL from an IMDb ID
+ * @param imdbId - The IMDb ID (e.g., "tt1375666")
+ * @returns Full IMDb URL or null if ID is invalid
+ */
+export function buildImdbUrl(imdbId: string | null | undefined): string | null {
+  if (!imdbId || typeof imdbId !== 'string' || imdbId.trim().length === 0) {
+    return null;
+  }
+
+  // IMDb IDs typically start with "tt" followed by digits
+  // Remove any whitespace and ensure it's a valid format
+  const cleanedId = imdbId.trim();
+  
+  // Basic validation: should start with "tt" and contain only alphanumeric characters
+  if (!/^tt\d+$/i.test(cleanedId)) {
+    // If it doesn't match the standard format, try to extract it
+    const match = cleanedId.match(/tt\d+/i);
+    if (match) {
+      return `https://www.imdb.com/title/${match[0]}/`;
+    }
+    return null;
+  }
+
+  return `https://www.imdb.com/title/${cleanedId}/`;
+}
+
