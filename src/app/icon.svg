@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <!-- Film strip background -->
+  <rect width="32" height="32" rx="4" fill="#1e40af"/>
+  
+  <!-- Film strip holes (left side) -->
+  <rect x="4" y="6" width="3" height="3" rx="0.5" fill="#3b82f6"/>
+  <rect x="4" y="12" width="3" height="3" rx="0.5" fill="#3b82f6"/>
+  <rect x="4" y="18" width="3" height="3" rx="0.5" fill="#3b82f6"/>
+  <rect x="4" y="24" width="3" height="3" rx="0.5" fill="#3b82f6"/>
+  
+  <!-- Film strip holes (right side) -->
+  <rect x="25" y="6" width="3" height="3" rx="0.5" fill="#3b82f6"/>
+  <rect x="25" y="12" width="3" height="3" rx="0.5" fill="#3b82f6"/>
+  <rect x="25" y="18" width="3" height="3" rx="0.5" fill="#3b82f6"/>
+  <rect x="25" y="24" width="3" height="3" rx="0.5" fill="#3b82f6"/>
+  
+  <!-- Movie frame/screen -->
+  <rect x="9" y="8" width="14" height="16" rx="1" fill="#60a5fa" stroke="#93c5fd" stroke-width="0.5"/>
+  
+  <!-- Play button triangle -->
+  <path d="M13 12 L13 20 L20 16 Z" fill="#ffffff"/>
+</svg>
+
