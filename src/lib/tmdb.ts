@@ -225,44 +225,322 @@ class TMDBService {
   }
 
   /**
-   * Get trending content in India using Discover endpoint
-   * @param mediaType - 'movie' or 'tv'
+   * Get movies currently playing in theaters for a specific region
+   * @param region - ISO 3166-1 alpha-2 country code (default: 'IN' for India)
    * @param page - Page number (default: 1)
-   * @param limit - Limit number of results (optional)
-   * @returns TMDB response with trending content
+   * @returns TMDB response with now playing movies
    */
-  async getTrendingInIndia(
-    mediaType: 'movie' | 'tv',
-    page: number = 1,
-    limit?: number
-  ): Promise<TMDBResponse> {
-    const response = await this.makeRequest<TMDBResponse>(`/discover/${mediaType}`, {
-      region: 'IN',
-      sort_by: 'popularity.desc',
+  async getNowPlaying(region: string = 'IN', page: number = 1): Promise<TMDBResponse> {
+    return this.makeRequest<TMDBResponse>('/movie/now_playing', {
+      region,
       page,
     });
-
-    // Apply limit if specified
-    if (limit && response.results) {
-      response.results = response.results.slice(0, limit);
-    }
-
-    return response;
   }
 
   /**
-   * Get top 10 trending movies and TV shows in India
+   * Get upcoming movies for a specific region
+   * @param region - ISO 3166-1 alpha-2 country code (default: 'IN' for India)
+   * @param page - Page number (default: 1)
+   * @returns TMDB response with upcoming movies
+   */
+  async getUpcoming(region: string = 'IN', page: number = 1): Promise<TMDBResponse> {
+    return this.makeRequest<TMDBResponse>('/movie/upcoming', {
+      region,
+      page,
+    });
+  }
+
+  /**
+   * Get watch providers for a movie in a specific region
+   * @param movieId - The TMDB movie ID
+   * @param region - ISO 3166-1 alpha-2 country code (default: 'IN' for India)
+   * @returns Watch providers object with flatrate, rent, buy arrays
+   */
+  async getWatchProviders(
+    movieId: number,
+    region: string = 'IN'
+  ): Promise<{
+    id: number;
+    results: {
+      IN?: {
+        link: string;
+        flatrate?: Array<{ provider_id: number; provider_name: string; logo_path: string | null; display_priority: number }>;
+        rent?: Array<{ provider_id: number; provider_name: string; logo_path: string | null; display_priority: number }>;
+        buy?: Array<{ provider_id: number; provider_name: string; logo_path: string | null; display_priority: number }>;
+      };
+    };
+  }> {
+    return this.makeRequest<{
+      id: number;
+      results: {
+        IN?: {
+          link: string;
+          flatrate?: Array<{ provider_id: number; provider_name: string; logo_path: string | null; display_priority: number }>;
+          rent?: Array<{ provider_id: number; provider_name: string; logo_path: string | null; display_priority: number }>;
+          buy?: Array<{ provider_id: number; provider_name: string; logo_path: string | null; display_priority: number }>;
+        };
+      };
+    }>(`/movie/${movieId}/watch/providers`, {
+      watch_region: region,
+    });
+  }
+
+  /**
+   * Batch fetch watch providers for multiple movies
+   * @param movieIds - Array of movie IDs
+   * @param region - ISO 3166-1 alpha-2 country code (default: 'IN')
+   * @param delayMs - Delay between batches in milliseconds (default: 100)
+   * @returns Map of movie ID to watch providers (true if available in region, false otherwise)
+   */
+  async getMoviesWatchProvidersBatch(
+    movieIds: number[],
+    region: string = 'IN',
+    delayMs: number = 100
+  ): Promise<Map<number, boolean>> {
+    const results = new Map<number, boolean>();
+    
+    // Process in smaller batches to respect rate limits
+    const BATCH_SIZE = 5;
+    
+    for (let i = 0; i < movieIds.length; i += BATCH_SIZE) {
+      const batch = movieIds.slice(i, i + BATCH_SIZE);
+      
+      try {
+        // Fetch watch providers for batch in parallel
+        const batchPromises = batch.map(async (movieId) => {
+          try {
+            const providers = await this.getWatchProviders(movieId, region);
+            // Check if movie has any providers (flatrate, rent, or buy) in India
+            const indiaProviders = providers.results[region as keyof typeof providers.results];
+            const isAvailable = !!(
+              indiaProviders?.flatrate?.length ||
+              indiaProviders?.rent?.length ||
+              indiaProviders?.buy?.length
+            );
+            return { movieId, isAvailable };
+          } catch (error) {
+            console.error(`Error fetching watch providers for movie ${movieId}:`, error);
+            return { movieId, isAvailable: false };
+          }
+        });
+
+        const batchResults = await Promise.all(batchPromises);
+        
+        batchResults.forEach((result) => {
+          results.set(result.movieId, result.isAvailable);
+        });
+
+        // Add delay between batches to respect rate limits
+        if (i + BATCH_SIZE < movieIds.length) {
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+        }
+      } catch (error) {
+        console.error(`Error in batch watch providers fetch:`, error);
+        // Continue with next batch, set false for failed ones
+        batch.forEach(movieId => {
+          if (!results.has(movieId)) {
+            results.set(movieId, false);
+          }
+        });
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * Get hybrid trending movies for India
+   * Combines global trending + now playing in India, filtered by India availability
+   * @param limit - Number of results to return (default: 10)
+   * @returns Array of movies ranked by trending score and availability
+   */
+  async getHybridTrendingForIndia(limit: number = 10): Promise<Movie[]> {
+    try {
+      // Fetch global trending (what's hot worldwide)
+      const globalTrending = await this.getTrending('movie', 'week');
+      const trendingMovies = globalTrending.results || [];
+
+      // Fetch now playing in India (what's in theaters in India)
+      const nowPlayingResponse = await this.getNowPlaying('IN', 1);
+      const nowPlayingMovies = nowPlayingResponse.results || [];
+
+      // Combine and deduplicate by movie ID
+      const movieMap = new Map<number, { movie: Movie; source: 'trending' | 'now_playing'; index: number }>();
+      
+      // Add trending movies with their index (for ranking)
+      trendingMovies.forEach((movie, index) => {
+        if (!movieMap.has(movie.id)) {
+          movieMap.set(movie.id, { movie, source: 'trending', index });
+        }
+      });
+
+      // Add now playing movies (prioritize if already in trending)
+      nowPlayingMovies.forEach((movie, index) => {
+        if (movieMap.has(movie.id)) {
+          // Already in trending, mark as both
+          const existing = movieMap.get(movie.id)!;
+          movieMap.set(movie.id, { ...existing, source: 'trending' });
+        } else {
+          movieMap.set(movie.id, { movie, source: 'now_playing', index });
+        }
+      });
+
+      // Get all unique movie IDs
+      const allMovieIds = Array.from(movieMap.keys());
+
+      // Check watch providers for India availability (in batches)
+      const availabilityMap = await this.getMoviesWatchProvidersBatch(allMovieIds, 'IN');
+
+      // Score and rank movies
+      const scoredMovies = Array.from(movieMap.values()).map(({ movie, source, index }) => {
+        const isAvailable = availabilityMap.get(movie.id) || false;
+        
+        // Scoring:
+        // - Trending movies get higher base score (100 - index)
+        // - Now playing gets medium score (50 - index)
+        // - Availability in India adds bonus (50 points)
+        // - Recency bonus (newer releases get +10 to +30 points)
+        let score = 0;
+        
+        if (source === 'trending') {
+          score = 100 - index; // Trending position matters
+        } else {
+          score = 50 - index; // Now playing position matters less
+        }
+        
+        if (isAvailable) {
+          score += 50; // Big bonus for India availability
+        }
+        
+        // Recency bonus (movies released in last 90 days get bonus)
+        const releaseDate = movie.release_date ? new Date(movie.release_date) : null;
+        if (releaseDate) {
+          const daysSinceRelease = (Date.now() - releaseDate.getTime()) / (1000 * 60 * 60 * 24);
+          if (daysSinceRelease <= 90) {
+            score += 30 - Math.floor(daysSinceRelease / 3); // Up to 30 points for recent releases
+          }
+        }
+        
+        return { movie, score, isAvailable, source };
+      });
+
+      // Sort by score (descending), then by availability, then by release date
+      scoredMovies.sort((a, b) => {
+        if (b.score !== a.score) {
+          return b.score - a.score;
+        }
+        // Tiebreaker: prefer available in India
+        if (b.isAvailable !== a.isAvailable) {
+          return b.isAvailable ? 1 : -1;
+        }
+        // Final tiebreaker: newer release date
+        const dateA = a.movie.release_date ? new Date(a.movie.release_date).getTime() : 0;
+        const dateB = b.movie.release_date ? new Date(b.movie.release_date).getTime() : 0;
+        return dateB - dateA;
+      });
+
+      // Return top N movies
+      return scoredMovies.slice(0, limit).map(item => item.movie);
+    } catch (error) {
+      console.error('Error in hybrid trending:', error);
+      // Fallback to just global trending if hybrid fails
+      try {
+        const fallback = await this.getTrending('movie', 'week');
+        return (fallback.results || []).slice(0, limit);
+      } catch (fallbackError) {
+        console.error('Fallback trending also failed:', fallbackError);
+        return [];
+      }
+    }
+  }
+
+  /**
+   * Get hybrid trending TV shows for India
+   * Similar to movies but for TV shows
+   * @param limit - Number of results to return (default: 10)
+   * @returns Array of TV shows ranked by trending score
+   */
+  async getHybridTrendingTVForIndia(limit: number = 10): Promise<Movie[]> {
+    try {
+      // Fetch global trending TV shows
+      const globalTrending = await this.getTrending('tv', 'week');
+      const trendingShows = globalTrending.results || [];
+
+      // For TV shows, we'll use trending + on the air (if available)
+      // Note: TMDB doesn't have a "now playing" equivalent for TV, but we can use "on_the_air"
+      let onTheAirShows: Movie[] = [];
+      try {
+        const onTheAirResponse = await this.makeRequest<TMDBResponse>('/tv/on_the_air', {
+          region: 'IN',
+          page: 1,
+        });
+        onTheAirShows = onTheAirResponse.results || [];
+      } catch (error) {
+        console.error('Error fetching on the air TV shows:', error);
+        // Continue without on the air shows
+      }
+
+      // Combine and deduplicate
+      const showMap = new Map<number, { show: Movie; source: 'trending' | 'on_the_air'; index: number }>();
+      
+      trendingShows.forEach((show, index) => {
+        if (!showMap.has(show.id)) {
+          showMap.set(show.id, { show, source: 'trending', index });
+        }
+      });
+
+      onTheAirShows.forEach((show, index) => {
+        if (!showMap.has(show.id)) {
+          showMap.set(show.id, { show, source: 'on_the_air', index });
+        }
+      });
+
+      // Score and rank (similar to movies but simpler for TV)
+      const scoredShows = Array.from(showMap.values()).map(({ show, source, index }) => {
+        let score = source === 'trending' ? 100 - index : 50 - index;
+        
+        // Recency bonus for TV shows
+        const airDate = show.first_air_date ? new Date(show.first_air_date) : null;
+        if (airDate) {
+          const daysSinceAir = (Date.now() - airDate.getTime()) / (1000 * 60 * 60 * 24);
+          if (daysSinceAir <= 90) {
+            score += 30 - Math.floor(daysSinceAir / 3);
+          }
+        }
+        
+        return { show, score };
+      });
+
+      // Sort by score
+      scoredShows.sort((a, b) => b.score - a.score);
+
+      return scoredShows.slice(0, limit).map(item => item.show);
+    } catch (error) {
+      console.error('Error in hybrid trending TV:', error);
+      // Fallback to just global trending
+      try {
+        const fallback = await this.getTrending('tv', 'week');
+        return (fallback.results || []).slice(0, limit);
+      } catch (fallbackError) {
+        console.error('Fallback trending TV also failed:', fallbackError);
+        return [];
+      }
+    }
+  }
+
+  /**
+   * Get top 10 hybrid trending movies and TV shows for India
    * @returns Object with separate arrays for movies and TV shows, each limited to 10 items
    */
-  async getTop10TrendingInIndia(): Promise<{ movies: Movie[]; tvShows: Movie[] }> {
-    const [moviesResponse, tvShowsResponse] = await Promise.all([
-      this.getTrendingInIndia('movie', 1, 10),
-      this.getTrendingInIndia('tv', 1, 10),
+  async getTop10HybridTrendingForIndia(): Promise<{ movies: Movie[]; tvShows: Movie[] }> {
+    const [movies, tvShows] = await Promise.all([
+      this.getHybridTrendingForIndia(10),
+      this.getHybridTrendingTVForIndia(10),
     ]);
 
     return {
-      movies: moviesResponse.results || [],
-      tvShows: tvShowsResponse.results || [],
+      movies,
+      tvShows,
     };
   }
 }
