@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import MoodSelector from '../components/MoodSelector';
 import MovieSearch from '../components/MovieSearch';
 import MovieCard from '../components/MovieCard';
+import TrendingSection from '../components/TrendingSection';
 import DarkModeToggle from '../components/DarkModeToggle';
 import { MoodType } from '../types/mood';
 import { Movie } from '../types/movie';
@@ -12,11 +13,9 @@ import { MOODS } from '../config/moods';
 
 export default function HomePage() {
   const [selectedMood, setSelectedMood] = useState<MoodType | null>(null);
-  const [searchQuery, setSearchQuery] = useState<string>('');
   const [movies, setMovies] = useState<Movie[] | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [mode, setMode] = useState<'search' | 'mood' | null>(null);
   const recommendationsRef = useRef<HTMLDivElement>(null);
 
   // Scroll to results when they're loaded
@@ -52,28 +51,12 @@ export default function HomePage() {
     }
   }, [error]);
 
-  const handleSearchResults = (searchMovies: Movie[], query: string) => {
-    setMovies(searchMovies);
-    setSearchQuery(query);
-    setMode('search');
-    setSelectedMood(null);
-    setError(null);
-  };
-
-  const handleSearchClear = () => {
-    setMovies(null);
-    setSearchQuery('');
-    setMode(null);
-    setError(null);
-  };
 
   const handleMoodSelect = async (mood: MoodType) => {
     setSelectedMood(mood);
     setLoading(true);
     setError(null);
     setMovies(null);
-    setSearchQuery('');
-    setMode('mood');
 
     try {
       const response = await fetch('/api/recommendations', {
@@ -148,11 +131,7 @@ export default function HomePage() {
           transition={{ duration: 0.6, delay: 0.2 }}
           className="mb-8 md:mb-10"
         >
-          <MovieSearch
-            onSearchResults={handleSearchResults}
-            onError={setError}
-            onClear={handleSearchClear}
-          />
+          <MovieSearch />
         </motion.section>
 
         {/* Secondary: Mood Filters */}
@@ -168,6 +147,11 @@ export default function HomePage() {
           />
         </motion.section>
 
+        {/* Trending Section */}
+        <TrendingSection />
+
+        {/* Mood Recommendations Section */}
+
         {/* Results Section */}
         <AnimatePresence mode="wait">
           {loading && (
@@ -181,9 +165,7 @@ export default function HomePage() {
               <div className="flex flex-col items-center justify-center py-16">
                 <div className="w-16 h-16 border-4 border-gray-300 dark:border-gray-600 border-t-blue-500 rounded-full animate-spin mb-4" />
                 <p className="text-lg text-gray-600 dark:text-gray-400">
-                  {mode === 'mood' 
-                    ? 'Finding the perfect recommendations for you...'
-                    : 'Searching for movies...'}
+                  Finding the perfect recommendations for you...
                 </p>
               </div>
             </motion.section>
@@ -221,7 +203,7 @@ export default function HomePage() {
                 <button
                   onClick={() => {
                     setError(null);
-                    if (selectedMood && mode === 'mood') {
+                    if (selectedMood) {
                       handleMoodSelect(selectedMood);
                     }
                   }}
@@ -245,19 +227,13 @@ export default function HomePage() {
             >
               <div className="mb-8">
                 <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-2">
-                  {mode === 'search' ? 'Search Results' : 'Your Recommendations'}
+                  Your Recommendations
                 </h2>
                 <div className="space-y-2">
-                  {mode === 'search' ? (
-                    <p className="text-gray-600 dark:text-gray-400">
-                      Found {movies.length} result{movies.length !== 1 ? 's' : ''} for &quot;{searchQuery}&quot;
-                    </p>
-                  ) : (
-                    <p className="text-gray-600 dark:text-gray-400">
-                      We found {movies.length} perfect match{movies.length !== 1 ? 'es' : ''} for your {selectedMood && MOODS[selectedMood].label.toLowerCase()} mood
-                    </p>
-                  )}
-                  {mode === 'mood' && selectedMood && (
+                  <p className="text-gray-600 dark:text-gray-400">
+                    We found {movies.length} perfect match{movies.length !== 1 ? 'es' : ''} for your {selectedMood && MOODS[selectedMood].label.toLowerCase()} mood
+                  </p>
+                  {selectedMood && (
                     <div className="flex flex-wrap items-center gap-2 pt-2">
                       <span className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1">
                         <span className="text-xl">{MOODS[selectedMood].emoji}</span>
@@ -293,9 +269,7 @@ export default function HomePage() {
             >
               <div className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-8 text-center">
                 <p className="text-lg text-gray-600 dark:text-gray-400">
-                  {mode === 'search' 
-                    ? `No movies found for "${searchQuery}". Try a different search term!`
-                    : 'No recommendations found. Try selecting a different mood!'}
+                  No recommendations found. Try selecting a different mood!
                 </p>
               </div>
             </motion.section>

@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { MovieDetails, TMDBResponse } from '../types/movie';
+import { Movie, MovieDetails, TMDBResponse } from '../types/movie';
 
 class TMDBService {
   private apiKey: string | null = null;
@@ -222,6 +222,48 @@ class TMDBService {
     }
 
     return results;
+  }
+
+  /**
+   * Get trending content in India using Discover endpoint
+   * @param mediaType - 'movie' or 'tv'
+   * @param page - Page number (default: 1)
+   * @param limit - Limit number of results (optional)
+   * @returns TMDB response with trending content
+   */
+  async getTrendingInIndia(
+    mediaType: 'movie' | 'tv',
+    page: number = 1,
+    limit?: number
+  ): Promise<TMDBResponse> {
+    const response = await this.makeRequest<TMDBResponse>(`/discover/${mediaType}`, {
+      region: 'IN',
+      sort_by: 'popularity.desc',
+      page,
+    });
+
+    // Apply limit if specified
+    if (limit && response.results) {
+      response.results = response.results.slice(0, limit);
+    }
+
+    return response;
+  }
+
+  /**
+   * Get top 10 trending movies and TV shows in India
+   * @returns Object with separate arrays for movies and TV shows, each limited to 10 items
+   */
+  async getTop10TrendingInIndia(): Promise<{ movies: Movie[]; tvShows: Movie[] }> {
+    const [moviesResponse, tvShowsResponse] = await Promise.all([
+      this.getTrendingInIndia('movie', 1, 10),
+      this.getTrendingInIndia('tv', 1, 10),
+    ]);
+
+    return {
+      movies: moviesResponse.results || [],
+      tvShows: tvShowsResponse.results || [],
+    };
   }
 }
 
