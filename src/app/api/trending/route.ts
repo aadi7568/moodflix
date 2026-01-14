@@ -4,6 +4,7 @@ import { getOrCreateSessionToken, setSessionTokenCookie } from '@/lib/anonymous-
 import { rateLimitMiddleware } from '@/lib/rate-limit';
 import { trendingParamsSchema } from '@/lib/validators';
 import { handleApiError } from '@/lib/error-handler';
+import { Movie } from '@/types/movie';
 import { z } from 'zod';
 
 export const dynamic = 'force-dynamic';
@@ -25,24 +26,61 @@ export async function GET(request: NextRequest) {
     const validated = trendingParamsSchema.parse({
       mediaType: searchParams.get('mediaType') || 'all',
       timeWindow: searchParams.get('timeWindow') || 'day',
+      region: searchParams.get('region') || 'IN',
+      limit: searchParams.get('limit') ? parseInt(searchParams.get('limit')!, 10) : undefined,
     });
     
-    const { mediaType, timeWindow } = validated;
+    const { mediaType, timeWindow, region, limit } = validated;
 
-    // Fetch trending content from TMDB
-    const tmdbResponse = await tmdbService.getTrending(mediaType, timeWindow);
+    let responseData: {
+      success: boolean;
+      data?: Movie[];
+      movies?: Movie[];
+      tvShows?: Movie[];
+      page?: number;
+      totalPages?: number;
+      totalResults?: number;
+    };
 
-    // Create response with session token and rate limit headers
-    const httpResponse = NextResponse.json(
-      {
+    // Use India-specific trending if region is IN
+    if (region === 'IN') {
+      if (mediaType === 'all') {
+        // Fetch both movies and TV shows separately
+        const { movies, tvShows } = await tmdbService.getTop10TrendingInIndia();
+        responseData = {
+          success: true,
+          movies,
+          tvShows,
+        };
+      } else {
+        // Fetch single media type
+        const tmdbResponse = await tmdbService.getTrendingInIndia(
+          mediaType as 'movie' | 'tv',
+          1,
+          limit || 10
+        );
+        responseData = {
+          success: true,
+          data: tmdbResponse.results,
+          page: tmdbResponse.page,
+          totalPages: tmdbResponse.total_pages,
+          totalResults: tmdbResponse.total_results,
+        };
+      }
+    } else {
+      // Use global trending for other regions
+      const tmdbResponse = await tmdbService.getTrending(mediaType, timeWindow);
+      responseData = {
         success: true,
         data: tmdbResponse.results,
         page: tmdbResponse.page,
         totalPages: tmdbResponse.total_pages,
         totalResults: tmdbResponse.total_results,
-      },
-      { status: 200 }
-    );
+      };
+    }
+
+    // Create response with session token and rate limit headers
+    const httpResponse = NextResponse.json(responseData, { status: 200 });
 
     // Set cookie if new token was created
     if (isNew) {

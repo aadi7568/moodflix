@@ -60,5 +60,7 @@ export const searchQuerySchema = z.object({
 export const trendingParamsSchema = z.object({
   mediaType: z.enum(['movie', 'tv', 'all']).optional().default('all'),
   timeWindow: z.enum(['day', 'week']).optional().default('day'),
+  region: z.string().optional().default('IN'),
+  limit: z.number().int().positive().max(100).optional(),
 });
 

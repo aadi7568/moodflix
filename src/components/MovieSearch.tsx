@@ -1,14 +1,12 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, X, Loader2, AlertCircle, Sparkles } from 'lucide-react';
-import { Movie } from '../types/movie';
+import { Search, X, AlertCircle, Sparkles } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 interface MovieSearchProps {
-  onSearchResults: (movies: Movie[], query: string) => void;
-  onError?: (error: string) => void;
   onClear?: () => void;
 }
 
@@ -24,12 +22,10 @@ const POPULAR_SEARCHES = [
 ];
 
 export default function MovieSearch({
-  onSearchResults,
-  onError,
   onClear,
 }: MovieSearchProps) {
+  const router = useRouter();
   const [input, setInput] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -46,32 +42,8 @@ export default function MovieSearch({
       return;
     }
 
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const response = await fetch(`/api/search?query=${encodeURIComponent(input.trim())}`, {
-        credentials: 'include', // Include cookies for session token
-      });
-
-      const data = await response.json();
-
-      if (!response.ok || !data.success) {
-        const errorMsg = data.error || 'Failed to search movies';
-        throw new Error(errorMsg);
-      }
-
-      const movies: Movie[] = data.movies || [];
-      onSearchResults(movies, data.query || input.trim());
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to search movies. Please try again.';
-      setError(errorMessage);
-      if (onError) {
-        onError(errorMessage);
-      }
-    } finally {
-      setIsLoading(false);
-    }
+    // Navigate to search page
+    router.push(`/search?q=${encodeURIComponent(input.trim())}`);
   };
 
   const handleClear = () => {
@@ -83,34 +55,11 @@ export default function MovieSearch({
     inputRef.current?.focus();
   };
 
-  const handleSuggestionClick = async (suggestion: string) => {
+  const handleSuggestionClick = (suggestion: string) => {
     setInput(suggestion);
     setError(null);
-    setIsLoading(true);
-
-    try {
-      const response = await fetch(`/api/search?query=${encodeURIComponent(suggestion.trim())}`, {
-        credentials: 'include', // Include cookies for session token
-      });
-
-      const data = await response.json();
-
-      if (!response.ok || !data.success) {
-        const errorMsg = data.error || 'Failed to search movies';
-        throw new Error(errorMsg);
-      }
-
-      const movies: Movie[] = data.movies || [];
-      onSearchResults(movies, data.query || suggestion.trim());
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to search movies. Please try again.';
-      setError(errorMessage);
-      if (onError) {
-        onError(errorMessage);
-      }
-    } finally {
-      setIsLoading(false);
-    }
+    // Navigate to search page
+    router.push(`/search?q=${encodeURIComponent(suggestion.trim())}`);
   };
 
   return (
@@ -146,7 +95,6 @@ export default function MovieSearch({
               'disabled:opacity-50 disabled:cursor-not-allowed',
               'text-lg'
             )}
-            disabled={isLoading}
             aria-label="Search for movies"
             aria-describedby={error ? 'error-message' : undefined}
           />
@@ -159,11 +107,6 @@ export default function MovieSearch({
             >
               <X className="w-4 h-4 text-gray-400" />
             </button>
-          )}
-          {isLoading && (
-            <div className="absolute right-4 top-1/2 transform -translate-y-1/2">
-              <Loader2 className="w-5 h-5 text-blue-500 animate-spin" />
-            </div>
           )}
         </div>
       </form>
@@ -186,7 +129,7 @@ export default function MovieSearch({
 
       {/* Search Suggestions */}
       <AnimatePresence>
-        {!input && !isLoading && !error && (
+        {!input && !error && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
