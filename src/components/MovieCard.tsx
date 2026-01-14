@@ -119,36 +119,46 @@ export default function MovieCard({ movie }: MovieCardProps) {
           {truncatedOverview}
         </p>
 
-        {/* Streaming Providers */}
-        {movie.watch_providers && (
-          <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
-            <div className="flex items-center gap-2 mb-2">
+        {/* Streaming Providers - Always show to maintain consistent layout */}
+        <div className="pt-2 border-t border-gray-200 dark:border-gray-700 min-h-[60px]">
+          {movie.watch_providers && (
+            (movie.watch_providers.flatrate && movie.watch_providers.flatrate.length > 0) ||
+            (movie.watch_providers.rent && movie.watch_providers.rent.length > 0) ||
+            (movie.watch_providers.buy && movie.watch_providers.buy.length > 0)
+          ) ? (
+            <div className="space-y-2">
               <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
                 Watch on:
               </span>
+              <div className="flex flex-wrap gap-2">
+                {movie.watch_providers.flatrate && movie.watch_providers.flatrate.length > 0 && (
+                  <div>
+                    <span className="text-xs text-gray-500 dark:text-gray-400 mr-1">Stream:</span>
+                    <StreamingProviderBadge providers={movie.watch_providers.flatrate} maxDisplay={4} />
+                  </div>
+                )}
+                {movie.watch_providers.rent && movie.watch_providers.rent.length > 0 && (
+                  <div>
+                    <span className="text-xs text-gray-500 dark:text-gray-400 mr-1">Rent:</span>
+                    <StreamingProviderBadge providers={movie.watch_providers.rent} maxDisplay={2} />
+                  </div>
+                )}
+                {movie.watch_providers.buy && movie.watch_providers.buy.length > 0 && (
+                  <div>
+                    <span className="text-xs text-gray-500 dark:text-gray-400 mr-1">Buy:</span>
+                    <StreamingProviderBadge providers={movie.watch_providers.buy} maxDisplay={2} />
+                  </div>
+                )}
+              </div>
             </div>
-            <div className="flex flex-wrap gap-2">
-              {movie.watch_providers.flatrate && movie.watch_providers.flatrate.length > 0 && (
-                <div>
-                  <span className="text-xs text-gray-500 dark:text-gray-400 mr-1">Stream:</span>
-                  <StreamingProviderBadge providers={movie.watch_providers.flatrate} maxDisplay={4} />
-                </div>
-              )}
-              {movie.watch_providers.rent && movie.watch_providers.rent.length > 0 && (
-                <div>
-                  <span className="text-xs text-gray-500 dark:text-gray-400 mr-1">Rent:</span>
-                  <StreamingProviderBadge providers={movie.watch_providers.rent} maxDisplay={2} />
-                </div>
-              )}
-              {movie.watch_providers.buy && movie.watch_providers.buy.length > 0 && (
-                <div>
-                  <span className="text-xs text-gray-500 dark:text-gray-400 mr-1">Buy:</span>
-                  <StreamingProviderBadge providers={movie.watch_providers.buy} maxDisplay={2} />
-                </div>
-              )}
+          ) : (
+            <div className="flex items-center">
+              <span className="text-xs text-gray-400 dark:text-gray-500 italic">
+                Streaming info unavailable
+              </span>
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
         {/* IMDb Link */}
         {movie.imdb_url && (

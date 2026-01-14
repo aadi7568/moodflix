@@ -144,12 +144,16 @@ export default function TrendingCarousel({ items, title }: TrendingCarouselProps
                         </span>
                       </div>
                     )}
-                    {/* Streaming Providers */}
-                    {movie.watch_providers?.flatrate && movie.watch_providers.flatrate.length > 0 && (
-                      <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+                    {/* Streaming Providers - Always show to maintain consistent layout */}
+                    <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700 min-h-[40px]">
+                      {movie.watch_providers?.flatrate && movie.watch_providers.flatrate.length > 0 ? (
                         <StreamingProviderBadge providers={movie.watch_providers.flatrate} maxDisplay={3} />
-                      </div>
-                    )}
+                      ) : (
+                        <span className="text-[10px] text-gray-400 dark:text-gray-500 italic">
+                          Info unavailable
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               </motion.div>
