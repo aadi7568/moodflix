@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { Movie, MovieDetails, TMDBResponse } from '../types/movie';
+import { Movie, MovieDetails, TMDBResponse, WatchProviders, WatchProvider } from '../types/movie';
 
 class TMDBService {
   private apiKey: string | null = null;
@@ -286,7 +286,71 @@ class TMDBService {
   }
 
   /**
-   * Batch fetch watch providers for multiple movies
+   * Batch fetch full watch providers data for multiple movies
+   * @param movieIds - Array of movie IDs
+   * @param region - ISO 3166-1 alpha-2 country code (default: 'IN')
+   * @param delayMs - Delay between batches in milliseconds (default: 100)
+   * @returns Map of movie ID to watch providers data
+   */
+  async getMoviesWatchProvidersFullBatch(
+    movieIds: number[],
+    region: string = 'IN',
+    delayMs: number = 100
+  ): Promise<Map<number, { flatrate?: WatchProvider[]; rent?: WatchProvider[]; buy?: WatchProvider[] }>> {
+    const results = new Map<number, { flatrate?: WatchProvider[]; rent?: WatchProvider[]; buy?: WatchProvider[] }>();
+    
+    // Process in smaller batches to respect rate limits
+    const BATCH_SIZE = 5;
+    
+    for (let i = 0; i < movieIds.length; i += BATCH_SIZE) {
+      const batch = movieIds.slice(i, i + BATCH_SIZE);
+      
+      try {
+        // Fetch watch providers for batch in parallel
+        const batchPromises = batch.map(async (movieId) => {
+          try {
+            const providers = await this.getWatchProviders(movieId, region);
+            const regionProviders = providers.results[region as keyof typeof providers.results];
+            return { 
+              movieId, 
+              providers: regionProviders ? {
+                flatrate: regionProviders.flatrate || [],
+                rent: regionProviders.rent || [],
+                buy: regionProviders.buy || [],
+              } : { flatrate: [], rent: [], buy: [] }
+            };
+          } catch (error) {
+            console.error(`Error fetching watch providers for movie ${movieId}:`, error);
+            return { movieId, providers: { flatrate: [], rent: [], buy: [] } };
+          }
+        });
+
+        const batchResults = await Promise.all(batchPromises);
+        
+        batchResults.forEach((result) => {
+          results.set(result.movieId, result.providers);
+        });
+
+        // Add delay between batches to respect rate limits
+        if (i + BATCH_SIZE < movieIds.length) {
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+        }
+      } catch (error) {
+        console.error(`Error in batch watch providers fetch:`, error);
+        // Continue with next batch, set empty for failed ones
+        batch.forEach(movieId => {
+          if (!results.has(movieId)) {
+            results.set(movieId, { flatrate: [], rent: [], buy: [] });
+          }
+        });
+      }
+    }
+    
+    return results;
+  }
+
+  /**
+   * Batch fetch watch providers for multiple movies (returns boolean only)
    * @param movieIds - Array of movie IDs
    * @param region - ISO 3166-1 alpha-2 country code (default: 'IN')
    * @param delayMs - Delay between batches in milliseconds (default: 100)
@@ -346,6 +410,39 @@ class TMDBService {
     }
 
     return results;
+  }
+
+  /**
+   * Enrich movies with watch providers data
+   * @param movies - Array of movies to enrich
+   * @param region - ISO 3166-1 alpha-2 country code (default: 'IN')
+   * @returns Array of movies with watch_providers field populated
+   */
+  async enrichMoviesWithWatchProviders(
+    movies: Movie[],
+    region: string = 'IN'
+  ): Promise<Movie[]> {
+    if (movies.length === 0) {
+      return movies;
+    }
+
+    const movieIds = movies.map(m => m.id);
+    const providersMap = await this.getMoviesWatchProvidersFullBatch(movieIds, region);
+
+    return movies.map(movie => {
+      const providers = providersMap.get(movie.id);
+      if (providers && (providers.flatrate?.length || providers.rent?.length || providers.buy?.length)) {
+        return {
+          ...movie,
+          watch_providers: {
+            flatrate: providers.flatrate || [],
+            rent: providers.rent || [],
+            buy: providers.buy || [],
+          } as WatchProviders,
+        };
+      }
+      return movie;
+    });
   }
 
   /**

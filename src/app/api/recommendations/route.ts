@@ -201,6 +201,9 @@ export async function POST(request: NextRequest) {
       ? `Based on your ${moodConfig.label.toLowerCase()} mood, here are ${topMovies.length} AI-curated recommendations that match your emotional tone.`
       : `Based on your ${moodConfig.label.toLowerCase()} mood, here are ${topMovies.length} carefully curated recommendations that match your current vibe.`;
 
+    // Enrich movies with watch providers
+    const enrichedMovies = await tmdbService.enrichMoviesWithWatchProviders(topMovies, 'IN');
+
     interface RecommendationApiResponse {
       success: boolean;
       mood: MoodType;
@@ -216,9 +219,9 @@ export async function POST(request: NextRequest) {
     const response: RecommendationApiResponse = {
       success: true,
       mood: moodType,
-      movies: topMovies,
+      movies: enrichedMovies,
       message,
-      count: topMovies.length,
+      count: enrichedMovies.length,
     };
 
     // Store preferences for future filtering implementation

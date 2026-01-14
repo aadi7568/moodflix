@@ -9,6 +9,19 @@ export interface ProductionCompany {
   logo_path: string | null;
 }
 
+export interface WatchProvider {
+  provider_id: number;
+  provider_name: string;
+  logo_path: string | null;
+  display_priority: number;
+}
+
+export interface WatchProviders {
+  flatrate?: WatchProvider[];
+  rent?: WatchProvider[];
+  buy?: WatchProvider[];
+}
+
 export interface Movie {
   id: number;
   title: string;
@@ -24,6 +37,7 @@ export interface Movie {
   first_air_date?: string;
   imdb_id?: string | null;
   imdb_url?: string | null;
+  watch_providers?: WatchProviders;
 }
 
 export interface MovieDetails extends Movie {

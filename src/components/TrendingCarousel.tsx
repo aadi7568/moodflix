@@ -6,6 +6,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import Image from 'next/image';
 import { Movie } from '../types/movie';
 import { getImageUrl } from '../lib/utils';
+import StreamingProviderBadge from './StreamingProviderBadge';
 
 interface TrendingCarouselProps {
   items: Movie[];
@@ -141,6 +142,12 @@ export default function TrendingCarousel({ items, title }: TrendingCarouselProps
                         <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
                           {movie.vote_average.toFixed(1)}
                         </span>
+                      </div>
+                    )}
+                    {/* Streaming Providers */}
+                    {movie.watch_providers?.flatrate && movie.watch_providers.flatrate.length > 0 && (
+                      <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+                        <StreamingProviderBadge providers={movie.watch_providers.flatrate} maxDisplay={3} />
                       </div>
                     )}
                   </div>
