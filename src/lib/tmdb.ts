@@ -349,39 +349,107 @@ class TMDBService {
   }
 
   /**
+   * Get Indian language movies (Hindi, Tamil, Telugu)
+   * @param page - Page number (default: 1)
+   * @param limit - Limit number of results (optional)
+   * @returns TMDB response with Indian language movies
+   */
+  async getIndianLanguageMovies(
+    page: number = 1,
+    limit?: number
+  ): Promise<TMDBResponse> {
+    // Fetch movies in Hindi, Tamil, and Telugu
+    // Using OR logic: fetch each language separately and combine, or use with_original_language with comma
+    // Note: TMDB supports comma-separated values for with_original_language
+    const response = await this.makeRequest<TMDBResponse>('/discover/movie', {
+      region: 'IN',
+      with_original_language: 'hi,ta,te', // Hindi, Tamil, Telugu
+      sort_by: 'popularity.desc',
+      'release_date.gte': new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Last year
+      page,
+    });
+
+    // Apply limit if specified
+    if (limit && response.results) {
+      response.results = response.results.slice(0, limit);
+    }
+
+    return response;
+  }
+
+  /**
    * Get hybrid trending movies for India
-   * Combines global trending + now playing in India, filtered by India availability
+   * Combines global trending + now playing in India + Indian language movies, filtered by India availability
    * @param limit - Number of results to return (default: 10)
    * @returns Array of movies ranked by trending score and availability
    */
   async getHybridTrendingForIndia(limit: number = 10): Promise<Movie[]> {
     try {
-      // Fetch global trending (what's hot worldwide)
-      const globalTrending = await this.getTrending('movie', 'week');
-      const trendingMovies = globalTrending.results || [];
+      // Fetch all sources in parallel
+      const [globalTrending, nowPlayingResponse, indianMoviesResponse] = await Promise.all([
+        this.getTrending('movie', 'week'),
+        this.getNowPlaying('IN', 1),
+        this.getIndianLanguageMovies(1, 20), // Get up to 20 Indian movies
+      ]);
 
-      // Fetch now playing in India (what's in theaters in India)
-      const nowPlayingResponse = await this.getNowPlaying('IN', 1);
+      const trendingMovies = globalTrending.results || [];
       const nowPlayingMovies = nowPlayingResponse.results || [];
+      const indianMovies = indianMoviesResponse.results || [];
 
       // Combine and deduplicate by movie ID
-      const movieMap = new Map<number, { movie: Movie; source: 'trending' | 'now_playing'; index: number }>();
+      const movieMap = new Map<number, { 
+        movie: Movie; 
+        source: 'trending' | 'now_playing' | 'indian'; 
+        index: number;
+        isIndianLanguage: boolean;
+      }>();
       
       // Add trending movies with their index (for ranking)
       trendingMovies.forEach((movie, index) => {
         if (!movieMap.has(movie.id)) {
-          movieMap.set(movie.id, { movie, source: 'trending', index });
+          movieMap.set(movie.id, { 
+            movie, 
+            source: 'trending', 
+            index,
+            isIndianLanguage: false,
+          });
         }
       });
 
-      // Add now playing movies (prioritize if already in trending)
+      // Add now playing movies
       nowPlayingMovies.forEach((movie, index) => {
         if (movieMap.has(movie.id)) {
-          // Already in trending, mark as both
+          // Already in trending, keep trending as source
           const existing = movieMap.get(movie.id)!;
-          movieMap.set(movie.id, { ...existing, source: 'trending' });
+          movieMap.set(movie.id, { ...existing });
         } else {
-          movieMap.set(movie.id, { movie, source: 'now_playing', index });
+          movieMap.set(movie.id, { 
+            movie, 
+            source: 'now_playing', 
+            index,
+            isIndianLanguage: false,
+          });
+        }
+      });
+
+      // Add Indian language movies (mark as Indian)
+      indianMovies.forEach((movie, index) => {
+        if (movieMap.has(movie.id)) {
+          // Already exists, mark as Indian language
+          const existing = movieMap.get(movie.id)!;
+          movieMap.set(movie.id, { 
+            ...existing, 
+            isIndianLanguage: true,
+            // If it's not already from trending, prioritize Indian source
+            source: existing.source === 'trending' ? existing.source : 'indian',
+          });
+        } else {
+          movieMap.set(movie.id, { 
+            movie, 
+            source: 'indian', 
+            index,
+            isIndianLanguage: true,
+          });
         }
       });
 
@@ -392,20 +460,29 @@ class TMDBService {
       const availabilityMap = await this.getMoviesWatchProvidersBatch(allMovieIds, 'IN');
 
       // Score and rank movies
-      const scoredMovies = Array.from(movieMap.values()).map(({ movie, source, index }) => {
+      const scoredMovies = Array.from(movieMap.values()).map(({ movie, source, index, isIndianLanguage }) => {
         const isAvailable = availabilityMap.get(movie.id) || false;
         
         // Scoring:
         // - Trending movies get higher base score (100 - index)
+        // - Indian language movies get high base score (90 - index) - prioritize Indian content
         // - Now playing gets medium score (50 - index)
         // - Availability in India adds bonus (50 points)
+        // - Indian language bonus (20 points) - bonus for Indian movies
         // - Recency bonus (newer releases get +10 to +30 points)
         let score = 0;
         
         if (source === 'trending') {
           score = 100 - index; // Trending position matters
+        } else if (source === 'indian') {
+          score = 90 - index; // Indian movies get high priority
         } else {
           score = 50 - index; // Now playing position matters less
+        }
+        
+        // Indian language bonus
+        if (isIndianLanguage) {
+          score += 20; // Bonus for Indian movies (Hindi, Tamil, Telugu)
         }
         
         if (isAvailable) {
@@ -421,7 +498,7 @@ class TMDBService {
           }
         }
         
-        return { movie, score, isAvailable, source };
+        return { movie, score, isAvailable, source, isIndianLanguage };
       });
 
       // Sort by score (descending), then by availability, then by release date
@@ -455,6 +532,33 @@ class TMDBService {
   }
 
   /**
+   * Get Indian language TV shows (Hindi, Tamil, Telugu)
+   * @param page - Page number (default: 1)
+   * @param limit - Limit number of results (optional)
+   * @returns TMDB response with Indian language TV shows
+   */
+  async getIndianLanguageTVShows(
+    page: number = 1,
+    limit?: number
+  ): Promise<TMDBResponse> {
+    // Fetch TV shows in Hindi, Tamil, and Telugu
+    const response = await this.makeRequest<TMDBResponse>('/discover/tv', {
+      region: 'IN',
+      with_original_language: 'hi,ta,te', // Hindi, Tamil, Telugu
+      sort_by: 'popularity.desc',
+      'first_air_date.gte': new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Last year
+      page,
+    });
+
+    // Apply limit if specified
+    if (limit && response.results) {
+      response.results = response.results.slice(0, limit);
+    }
+
+    return response;
+  }
+
+  /**
    * Get hybrid trending TV shows for India
    * Similar to movies but for TV shows
    * @param limit - Number of results to return (default: 10)
@@ -462,42 +566,93 @@ class TMDBService {
    */
   async getHybridTrendingTVForIndia(limit: number = 10): Promise<Movie[]> {
     try {
-      // Fetch global trending TV shows
-      const globalTrending = await this.getTrending('tv', 'week');
-      const trendingShows = globalTrending.results || [];
-
-      // For TV shows, we'll use trending + on the air (if available)
-      // Note: TMDB doesn't have a "now playing" equivalent for TV, but we can use "on_the_air"
-      let onTheAirShows: Movie[] = [];
-      try {
-        const onTheAirResponse = await this.makeRequest<TMDBResponse>('/tv/on_the_air', {
+      // Fetch all sources in parallel
+      const [globalTrending, onTheAirResponse, indianShowsResponse] = await Promise.all([
+        this.getTrending('tv', 'week'),
+        this.makeRequest<TMDBResponse>('/tv/on_the_air', {
           region: 'IN',
           page: 1,
-        });
-        onTheAirShows = onTheAirResponse.results || [];
-      } catch (error) {
-        console.error('Error fetching on the air TV shows:', error);
-        // Continue without on the air shows
-      }
+        }).catch(() => ({ 
+          results: [], 
+          page: 1, 
+          total_pages: 0, 
+          total_results: 0 
+        } as TMDBResponse)),
+        this.getIndianLanguageTVShows(1, 20), // Get up to 20 Indian TV shows
+      ]);
+
+      const trendingShows = globalTrending.results || [];
+      const onTheAirShows = onTheAirResponse.results || [];
+      const indianShows = indianShowsResponse.results || [];
 
       // Combine and deduplicate
-      const showMap = new Map<number, { show: Movie; source: 'trending' | 'on_the_air'; index: number }>();
+      const showMap = new Map<number, { 
+        show: Movie; 
+        source: 'trending' | 'on_the_air' | 'indian'; 
+        index: number;
+        isIndianLanguage: boolean;
+      }>();
       
       trendingShows.forEach((show, index) => {
         if (!showMap.has(show.id)) {
-          showMap.set(show.id, { show, source: 'trending', index });
+          showMap.set(show.id, { 
+            show, 
+            source: 'trending', 
+            index,
+            isIndianLanguage: false,
+          });
         }
       });
 
       onTheAirShows.forEach((show, index) => {
-        if (!showMap.has(show.id)) {
-          showMap.set(show.id, { show, source: 'on_the_air', index });
+        if (showMap.has(show.id)) {
+          const existing = showMap.get(show.id)!;
+          showMap.set(show.id, { ...existing });
+        } else {
+          showMap.set(show.id, { 
+            show, 
+            source: 'on_the_air', 
+            index,
+            isIndianLanguage: false,
+          });
         }
       });
 
-      // Score and rank (similar to movies but simpler for TV)
-      const scoredShows = Array.from(showMap.values()).map(({ show, source, index }) => {
-        let score = source === 'trending' ? 100 - index : 50 - index;
+      // Add Indian language TV shows
+      indianShows.forEach((show, index) => {
+        if (showMap.has(show.id)) {
+          const existing = showMap.get(show.id)!;
+          showMap.set(show.id, { 
+            ...existing, 
+            isIndianLanguage: true,
+            source: existing.source === 'trending' ? existing.source : 'indian',
+          });
+        } else {
+          showMap.set(show.id, { 
+            show, 
+            source: 'indian', 
+            index,
+            isIndianLanguage: true,
+          });
+        }
+      });
+
+      // Score and rank (similar to movies)
+      const scoredShows = Array.from(showMap.values()).map(({ show, source, index, isIndianLanguage }) => {
+        let score = 0;
+        
+        if (source === 'trending') {
+          score = 100 - index;
+        } else if (source === 'indian') {
+          score = 90 - index; // Indian shows get high priority
+        } else {
+          score = 50 - index;
+        }
+        
+        // Indian language bonus
+        if (isIndianLanguage) {
+          score += 20; // Bonus for Indian TV shows (Hindi, Tamil, Telugu)
+        }
         
         // Recency bonus for TV shows
         const airDate = show.first_air_date ? new Date(show.first_air_date) : null;
@@ -508,7 +663,7 @@ class TMDBService {
           }
         }
         
-        return { show, score };
+        return { show, score, isIndianLanguage };
       });
 
       // Sort by score
