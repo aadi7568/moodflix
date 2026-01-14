@@ -1,13 +1,14 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { MOODS } from '../config/moods';
 import { MoodType } from '../types/mood';
 import { cn } from '../lib/utils';
 
 interface MoodSelectorProps {
-  selectedMood: MoodType | null;
-  onMoodSelect: (mood: MoodType) => void;
+  selectedMood?: MoodType | null; // Optional for backward compatibility
+  onMoodSelect?: (mood: MoodType) => void; // Optional for backward compatibility
 }
 
 // Map mood colors to border color classes
@@ -28,7 +29,17 @@ export default function MoodSelector({
   selectedMood,
   onMoodSelect,
 }: MoodSelectorProps) {
+  const router = useRouter();
   const moods = Object.values(MOODS);
+
+  const handleMoodClick = (moodId: MoodType) => {
+    // Navigate to recommendations page
+    router.push(`/recommendations?mood=${moodId}`);
+    // Call onMoodSelect if provided (for backward compatibility)
+    if (onMoodSelect) {
+      onMoodSelect(moodId);
+    }
+  };
 
   return (
     <div className="w-full">
@@ -39,7 +50,7 @@ export default function MoodSelector({
           return (
             <motion.button
               key={mood.id}
-              onClick={() => onMoodSelect(mood.id)}
+              onClick={() => handleMoodClick(mood.id)}
               className={cn(
                 'relative w-12 h-12 sm:w-14 sm:h-14 rounded-full',
                 'flex items-center justify-center',
