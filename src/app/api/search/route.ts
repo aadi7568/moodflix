@@ -73,13 +73,16 @@ export async function GET(request: NextRequest) {
         movies = searchResponse.results || [];
       }
 
-      // Fetch IMDb IDs for all movies in batch
+      // Fetch IMDb IDs and watch providers for all movies in batch
       if (movies.length > 0) {
         const movieIds = movies.map(m => m.id);
-        const externalIdsMap = await tmdbService.getMoviesExternalIdsBatch(movieIds, 100);
+        const [externalIdsMap, enrichedMovies] = await Promise.all([
+          tmdbService.getMoviesExternalIdsBatch(movieIds, 100),
+          tmdbService.enrichMoviesWithWatchProviders(movies, 'IN'),
+        ]);
         
-        // Enrich movies with IMDb IDs and URLs
-        movies = movies.map(movie => {
+        // Enrich movies with IMDb IDs and URLs (watch providers already added)
+        movies = enrichedMovies.map(movie => {
           const externalIds = externalIdsMap.get(movie.id);
           const imdbId = externalIds?.imdb_id || null;
           const imdbUrl = buildImdbUrl(imdbId);

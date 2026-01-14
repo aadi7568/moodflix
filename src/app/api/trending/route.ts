@@ -47,38 +47,49 @@ export async function GET(request: NextRequest) {
       if (mediaType === 'all') {
         // Fetch both movies and TV shows using hybrid approach
         const { movies, tvShows } = await tmdbService.getTop10HybridTrendingForIndia();
+        // Enrich with watch providers
+        const [enrichedMovies, enrichedTVShows] = await Promise.all([
+          tmdbService.enrichMoviesWithWatchProviders(movies, 'IN'),
+          tmdbService.enrichMoviesWithWatchProviders(tvShows, 'IN'),
+        ]);
         responseData = {
           success: true,
-          movies,
-          tvShows,
+          movies: enrichedMovies,
+          tvShows: enrichedTVShows,
         };
       } else if (mediaType === 'movie') {
         // Fetch movies using hybrid approach
         const movies = await tmdbService.getHybridTrendingForIndia(limit || 10);
+        // Enrich with watch providers
+        const enrichedMovies = await tmdbService.enrichMoviesWithWatchProviders(movies, 'IN');
         responseData = {
           success: true,
-          data: movies,
+          data: enrichedMovies,
           page: 1,
           totalPages: 1,
-          totalResults: movies.length,
+          totalResults: enrichedMovies.length,
         };
       } else {
         // Fetch TV shows using hybrid approach
         const tvShows = await tmdbService.getHybridTrendingTVForIndia(limit || 10);
+        // Enrich with watch providers
+        const enrichedTVShows = await tmdbService.enrichMoviesWithWatchProviders(tvShows, 'IN');
         responseData = {
           success: true,
-          data: tvShows,
+          data: enrichedTVShows,
           page: 1,
           totalPages: 1,
-          totalResults: tvShows.length,
+          totalResults: enrichedTVShows.length,
         };
       }
     } else {
       // Use global trending for other regions
       const tmdbResponse = await tmdbService.getTrending(mediaType, timeWindow);
+      // Enrich with watch providers
+      const enrichedMovies = await tmdbService.enrichMoviesWithWatchProviders(tmdbResponse.results, region);
       responseData = {
         success: true,
-        data: tmdbResponse.results,
+        data: enrichedMovies,
         page: tmdbResponse.page,
         totalPages: tmdbResponse.total_pages,
         totalResults: tmdbResponse.total_results,
