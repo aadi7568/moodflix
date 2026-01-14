@@ -42,29 +42,35 @@ export async function GET(request: NextRequest) {
       totalResults?: number;
     };
 
-    // Use India-specific trending if region is IN
+    // Use hybrid trending for India (combines global trending + now playing + filters by availability)
     if (region === 'IN') {
       if (mediaType === 'all') {
-        // Fetch both movies and TV shows separately
-        const { movies, tvShows } = await tmdbService.getTop10TrendingInIndia();
+        // Fetch both movies and TV shows using hybrid approach
+        const { movies, tvShows } = await tmdbService.getTop10HybridTrendingForIndia();
         responseData = {
           success: true,
           movies,
           tvShows,
         };
-      } else {
-        // Fetch single media type
-        const tmdbResponse = await tmdbService.getTrendingInIndia(
-          mediaType as 'movie' | 'tv',
-          1,
-          limit || 10
-        );
+      } else if (mediaType === 'movie') {
+        // Fetch movies using hybrid approach
+        const movies = await tmdbService.getHybridTrendingForIndia(limit || 10);
         responseData = {
           success: true,
-          data: tmdbResponse.results,
-          page: tmdbResponse.page,
-          totalPages: tmdbResponse.total_pages,
-          totalResults: tmdbResponse.total_results,
+          data: movies,
+          page: 1,
+          totalPages: 1,
+          totalResults: movies.length,
+        };
+      } else {
+        // Fetch TV shows using hybrid approach
+        const tvShows = await tmdbService.getHybridTrendingTVForIndia(limit || 10);
+        responseData = {
+          success: true,
+          data: tvShows,
+          page: 1,
+          totalPages: 1,
+          totalResults: tvShows.length,
         };
       }
     } else {
