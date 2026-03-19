@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { tmdbService } from '@/lib/tmdb';
+import { youtubeService } from '@/lib/youtube';
 import { getOrCreateSessionToken, setSessionTokenCookie } from '@/lib/anonymous-auth';
 import { rateLimitMiddleware } from '@/lib/rate-limit';
 import { trendingParamsSchema } from '@/lib/validators';
@@ -37,30 +38,53 @@ export async function GET(request: NextRequest) {
       data?: Movie[];
       movies?: Movie[];
       tvShows?: Movie[];
+      globalMovies?: Movie[];
+      globalTVShows?: Movie[];
       page?: number;
       totalPages?: number;
       totalResults?: number;
     };
 
-    // Use hybrid trending for India (combines global trending + now playing + filters by availability)
     if (region === 'IN') {
       if (mediaType === 'all') {
-        // Fetch both movies and TV shows using hybrid approach
-        const { movies, tvShows } = await tmdbService.getTop10HybridTrendingForIndia();
-        // Enrich with watch providers
-        const [enrichedMovies, enrichedTVShows] = await Promise.all([
-          tmdbService.enrichMoviesWithWatchProviders(movies, 'IN'),
-          tmdbService.enrichMoviesWithWatchProviders(tvShows, 'IN'),
+        // Fetch India-specific trending AND global trending in parallel.
+        // YouTube service is optional — falls back to empty arrays if YOUTUBE_API_KEY is not set.
+        const [indiaMovies, indiaTVShows, { movies: globalMovies, tvShows: globalTVShows }, ytResult] = await Promise.all([
+          tmdbService.getIndiaTrendingMovies(limit || 10),
+          tmdbService.getIndiaTrendingTVShows(limit || 10),
+          tmdbService.getGlobalTrending(limit || 10),
+          youtubeService.getYouTubeTrendingForIndia(),
+        ]);
+
+        // Merge YouTube results into India trending, deduplicating by TMDB id.
+        // YouTube signal takes the top slots; TMDB India fills the rest.
+        const mergeWithYouTube = (ytMovies: Movie[], tmdbMovies: Movie[], cap: number): Movie[] => {
+          if (ytMovies.length === 0) return tmdbMovies.slice(0, cap);
+          const seen = new Set(ytMovies.map(m => m.id));
+          const merged = [...ytMovies, ...tmdbMovies.filter(m => !seen.has(m.id))];
+          return merged.slice(0, cap);
+        };
+
+        const cap = limit || 10;
+        const mergedIndiaMovies = mergeWithYouTube(ytResult.movies, indiaMovies, cap);
+        const mergedIndiaTVShows = mergeWithYouTube(ytResult.tvShows, indiaTVShows, cap);
+
+        // Enrich all with watch providers in parallel
+        const [enrichedIndiaMovies, enrichedIndiaTVShows, enrichedGlobalMovies, enrichedGlobalTVShows] = await Promise.all([
+          tmdbService.enrichMoviesWithWatchProviders(mergedIndiaMovies, 'IN'),
+          tmdbService.enrichMoviesWithWatchProviders(mergedIndiaTVShows, 'IN'),
+          tmdbService.enrichMoviesWithWatchProviders(globalMovies, 'IN'),
+          tmdbService.enrichMoviesWithWatchProviders(globalTVShows, 'IN'),
         ]);
         responseData = {
           success: true,
-          movies: enrichedMovies,
-          tvShows: enrichedTVShows,
+          movies: enrichedIndiaMovies,
+          tvShows: enrichedIndiaTVShows,
+          globalMovies: enrichedGlobalMovies,
+          globalTVShows: enrichedGlobalTVShows,
         };
       } else if (mediaType === 'movie') {
-        // Fetch movies using hybrid approach
-        const movies = await tmdbService.getHybridTrendingForIndia(limit || 10);
-        // Enrich with watch providers
+        const movies = await tmdbService.getIndiaTrendingMovies(limit || 10);
         const enrichedMovies = await tmdbService.enrichMoviesWithWatchProviders(movies, 'IN');
         responseData = {
           success: true,
@@ -70,9 +94,7 @@ export async function GET(request: NextRequest) {
           totalResults: enrichedMovies.length,
         };
       } else {
-        // Fetch TV shows using hybrid approach
-        const tvShows = await tmdbService.getHybridTrendingTVForIndia(limit || 10);
-        // Enrich with watch providers
+        const tvShows = await tmdbService.getIndiaTrendingTVShows(limit || 10);
         const enrichedTVShows = await tmdbService.enrichMoviesWithWatchProviders(tvShows, 'IN');
         responseData = {
           success: true,
@@ -85,7 +107,6 @@ export async function GET(request: NextRequest) {
     } else {
       // Use global trending for other regions
       const tmdbResponse = await tmdbService.getTrending(mediaType, timeWindow);
-      // Enrich with watch providers
       const enrichedMovies = await tmdbService.enrichMoviesWithWatchProviders(tmdbResponse.results, region);
       responseData = {
         success: true,

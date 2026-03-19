@@ -8,6 +8,8 @@ import { Movie } from '../types/movie';
 interface TrendingData {
   movies: Movie[];
   tvShows: Movie[];
+  globalMovies: Movie[];
+  globalTVShows: Movie[];
 }
 
 export default function TrendingSection() {
@@ -34,6 +36,8 @@ export default function TrendingSection() {
         setTrendingData({
           movies: data.movies || [],
           tvShows: data.tvShows || [],
+          globalMovies: data.globalMovies || [],
+          globalTVShows: data.globalTVShows || [],
         });
       } catch (err) {
         console.error('Error fetching trending:', err);
@@ -67,7 +71,10 @@ export default function TrendingSection() {
     );
   }
 
-  if (!trendingData || (trendingData.movies.length === 0 && trendingData.tvShows.length === 0)) {
+  const hasIndiaContent = trendingData && (trendingData.movies.length > 0 || trendingData.tvShows.length > 0);
+  const hasGlobalContent = trendingData && (trendingData.globalMovies.length > 0 || trendingData.globalTVShows.length > 0);
+
+  if (!hasIndiaContent && !hasGlobalContent) {
     return null;
   }
 
@@ -78,16 +85,31 @@ export default function TrendingSection() {
       transition={{ duration: 0.6 }}
       className="w-full py-8 space-y-12"
     >
-      {trendingData.movies.length > 0 && (
+      {/* India Trending */}
+      {trendingData?.movies && trendingData.movies.length > 0 && (
         <TrendingCarousel
           items={trendingData.movies}
-          title="Top 10 Movies This Week"
+          title="Trending in India — Movies"
         />
       )}
-      {trendingData.tvShows.length > 0 && (
+      {trendingData?.tvShows && trendingData.tvShows.length > 0 && (
         <TrendingCarousel
           items={trendingData.tvShows}
-          title="Top 10 TV Shows This Week"
+          title="Trending in India — TV Shows"
+        />
+      )}
+
+      {/* Global Trending */}
+      {trendingData?.globalMovies && trendingData.globalMovies.length > 0 && (
+        <TrendingCarousel
+          items={trendingData.globalMovies}
+          title="Trending Globally — Movies"
+        />
+      )}
+      {trendingData?.globalTVShows && trendingData.globalTVShows.length > 0 && (
+        <TrendingCarousel
+          items={trendingData.globalTVShows}
+          title="Trending Globally — TV Shows"
         />
       )}
     </motion.section>
