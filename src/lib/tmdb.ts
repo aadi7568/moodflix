@@ -465,11 +465,12 @@ class TMDBService {
     // Fetch movies in Hindi, Tamil, and Telugu
     // Using OR logic: fetch each language separately and combine, or use with_original_language with comma
     // Note: TMDB supports comma-separated values for with_original_language
+    // with_origin_country=IN is more reliable than with_original_language because
+    // production country is consistently tagged in TMDB for Indian films
     const response = await this.makeRequest<TMDBResponse>('/discover/movie', {
-      region: 'IN',
-      with_original_language: 'hi,ta,te,ml,kn,bn,mr,pa', // Hindi, Tamil, Telugu, Malayalam, Kannada, Bengali, Marathi, Punjabi
+      with_origin_country: 'IN',
       sort_by: 'popularity.desc',
-      'release_date.gte': new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Last year
+      'release_date.gte': new Date(Date.now() - 2 * 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Last 2 years
       page,
     });
 
@@ -647,10 +648,9 @@ class TMDBService {
   ): Promise<TMDBResponse> {
     // Fetch TV shows in Hindi, Tamil, and Telugu
     const response = await this.makeRequest<TMDBResponse>('/discover/tv', {
-      region: 'IN',
-      with_original_language: 'hi,ta,te,ml,kn,bn,mr,pa', // Hindi, Tamil, Telugu, Malayalam, Kannada, Bengali, Marathi, Punjabi
+      with_origin_country: 'IN',
       sort_by: 'popularity.desc',
-      'first_air_date.gte': new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Last year
+      'first_air_date.gte': new Date(Date.now() - 2 * 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Last 2 years
       page,
     });
 
@@ -818,9 +818,16 @@ class TMDBService {
         this.getUpcoming('IN', 1),
       ]);
 
-      const nowPlaying = nowPlayingRes.results || [];
-      const indianLang = indianLangRes.results || [];
-      const upcoming = upcomingRes.results || [];
+      const INDIAN_LANGUAGES = new Set(['hi', 'ta', 'te', 'ml', 'kn', 'bn', 'mr', 'pa']);
+
+      // now_playing returns ALL movies in Indian theaters (incl. Hollywood) — filter to Indian-language films only
+      const nowPlaying = (nowPlayingRes.results || [])
+        .filter(m => m.original_language && INDIAN_LANGUAGES.has(m.original_language))
+        .map(m => ({ ...m, media_type: 'movie' as const }));
+      const indianLang = (indianLangRes.results || []).map(m => ({ ...m, media_type: 'movie' as const }));
+      const upcoming = (upcomingRes.results || [])
+        .filter(m => m.original_language && INDIAN_LANGUAGES.has(m.original_language))
+        .map(m => ({ ...m, media_type: 'movie' as const }));
 
       // Deduplicate by ID, tracking best source and index
       const movieMap = new Map<number, { movie: Movie; source: 'now_playing' | 'indian_lang' | 'upcoming'; index: number }>();
@@ -835,7 +842,6 @@ class TMDBService {
         if (!movieMap.has(movie.id)) {
           movieMap.set(movie.id, { movie, source: 'indian_lang', index });
         } else {
-          // Upgrade to now_playing source if that's what we have, keep better source
           const existing = movieMap.get(movie.id)!;
           if (existing.source !== 'now_playing') {
             movieMap.set(movie.id, { movie, source: 'indian_lang', index });
@@ -878,10 +884,9 @@ class TMDBService {
       return scored.slice(0, limit).map(item => item.movie);
     } catch (error) {
       console.error('Error in getIndiaTrendingMovies:', error);
-      // Fallback: just return popular Indian language movies
       try {
         const fallback = await this.getIndianLanguageMovies(1, limit);
-        return (fallback.results || []).slice(0, limit);
+        return (fallback.results || []).slice(0, limit).map(m => ({ ...m, media_type: 'movie' as const }));
       } catch {
         return [];
       }
@@ -901,7 +906,12 @@ class TMDBService {
         this.getIndianLanguageTVShows(1, 30),
       ]);
 
-      const onAir = (onAirRes.results || []).map(s => ({ ...s, media_type: 'tv' as const }));
+      const INDIAN_LANGUAGES = new Set(['hi', 'ta', 'te', 'ml', 'kn', 'bn', 'mr', 'pa']);
+
+      // on_the_air returns ALL shows airing in India — filter to Indian-language shows only
+      const onAir = (onAirRes.results || [])
+        .filter(s => s.original_language && INDIAN_LANGUAGES.has(s.original_language))
+        .map(s => ({ ...s, media_type: 'tv' as const }));
       const indianLang = (indianLangRes.results || []).map(s => ({ ...s, media_type: 'tv' as const }));
 
       const showMap = new Map<number, { show: Movie; source: 'on_air' | 'indian_lang'; index: number }>();
