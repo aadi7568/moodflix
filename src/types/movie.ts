@@ -33,6 +33,7 @@ export interface Movie {
   vote_count: number;
   genre_ids: number[];
   media_type: 'movie' | 'tv';
+  original_language?: string;
   name?: string;
   first_air_date?: string;
   imdb_id?: string | null;

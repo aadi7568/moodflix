@@ -54,17 +54,17 @@ function extractMovieTitle(youtubeTitle: string): string | null {
 }
 
 class YouTubeService {
-  private readonly apiKey: string | null;
   private cache: CachedTrending | null = null;
   // Cache for 3 hours — YouTube trending shifts slowly
   private readonly CACHE_TTL_MS = 3 * 60 * 60 * 1000;
 
-  constructor() {
-    this.apiKey = process.env.YOUTUBE_API_KEY ?? null;
+  private getApiKey(): string | null {
+    // Read lazily so Next.js serverless env vars are available at call time
+    return process.env.YOUTUBE_API_KEY ?? null;
   }
 
   private isAvailable(): boolean {
-    return !!this.apiKey;
+    return !!this.getApiKey();
   }
 
   /**
@@ -72,7 +72,8 @@ class YouTubeService {
    * Returns up to maxResults video titles.
    */
   private async fetchTrendingVideoTitles(maxResults = 20): Promise<string[]> {
-    if (!this.apiKey) return [];
+    const apiKey = this.getApiKey();
+    if (!apiKey) return [];
 
     const response = await axios.get<YouTubeResponse>(
       'https://www.googleapis.com/youtube/v3/videos',
@@ -83,7 +84,7 @@ class YouTubeService {
           regionCode: 'IN',
           videoCategoryId: '1', // Film & Animation
           maxResults,
-          key: this.apiKey,
+          key: apiKey,
         },
         timeout: 8000,
       }
@@ -100,36 +101,47 @@ class YouTubeService {
     const tmdb = getTmdbService();
     const movieMap = new Map<number, Movie>();
     const tvMap = new Map<number, Movie>();
+    const INDIAN_LANGUAGES = new Set(['hi', 'ta', 'te', 'ml', 'kn', 'bn', 'mr', 'pa']);
 
     const searches = titles
       .map(extractMovieTitle)
       .filter((t): t is string => t !== null);
 
-    // Search TMDB for each extracted title (sequential to avoid rate limits)
-    for (const query of searches) {
-      try {
-        const [movieRes, tvRes] = await Promise.allSettled([
-          tmdb.searchMovies(query, 1),
-          tmdb.searchTVShows(query, 1),
-        ]);
+    // Run searches in parallel batches of 5 to avoid TMDB rate limits
+    const BATCH = 5;
+    for (let i = 0; i < searches.length; i += BATCH) {
+      const batch = searches.slice(i, i + BATCH);
+      await Promise.allSettled(
+        batch.map(async (query) => {
+          try {
+            const [movieRes, tvRes] = await Promise.allSettled([
+              tmdb.searchMovies(query, 1),
+              tmdb.searchTVShows(query, 1),
+            ]);
 
-        if (movieRes.status === 'fulfilled' && movieRes.value?.results?.length) {
-          const top = movieRes.value.results[0];
-          // Only accept reasonably confident matches (title similarity check)
-          if (top && !movieMap.has(top.id)) {
-            movieMap.set(top.id, { ...top, media_type: 'movie' });
-          }
-        }
+            if (movieRes.status === 'fulfilled' && movieRes.value?.results?.length) {
+              // Prefer Indian-language results; fall back to any result if none found
+              const results = movieRes.value.results;
+              const top = results.find(r => r.original_language && INDIAN_LANGUAGES.has(r.original_language))
+                ?? results[0];
+              if (top && !movieMap.has(top.id)) {
+                movieMap.set(top.id, { ...top, media_type: 'movie' });
+              }
+            }
 
-        if (tvRes.status === 'fulfilled' && tvRes.value?.results?.length) {
-          const top = tvRes.value.results[0];
-          if (top && !tvMap.has(top.id)) {
-            tvMap.set(top.id, { ...top, media_type: 'tv' });
+            if (tvRes.status === 'fulfilled' && tvRes.value?.results?.length) {
+              const results = tvRes.value.results;
+              const top = results.find(r => r.original_language && INDIAN_LANGUAGES.has(r.original_language))
+                ?? results[0];
+              if (top && !tvMap.has(top.id)) {
+                tvMap.set(top.id, { ...top, media_type: 'tv' });
+              }
+            }
+          } catch {
+            // Ignore individual search failures
           }
-        }
-      } catch {
-        // Ignore individual search failures
-      }
+        })
+      );
     }
 
     return {
