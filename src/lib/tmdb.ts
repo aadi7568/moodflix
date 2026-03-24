@@ -93,6 +93,117 @@ class TMDBService {
     });
   }
 
+  // TMDB uses different genre IDs for TV vs movies for some genres
+  private toTVGenreIds(movieGenreIds: number[]): number[] {
+    const MOVIE_TO_TV: Record<number, number> = {
+      28: 10759,   // Action → Action & Adventure
+      12: 10759,   // Adventure → Action & Adventure
+      878: 10765,  // Science Fiction → Sci-Fi & Fantasy
+      14: 10765,   // Fantasy → Sci-Fi & Fantasy
+      36: 10768,   // History → War & Politics
+    };
+    const seen = new Set<number>();
+    return movieGenreIds
+      .map(id => MOVIE_TO_TV[id] ?? id)
+      .filter(id => { if (seen.has(id)) return false; seen.add(id); return true; });
+  }
+
+  async getTVShowsByGenres(genreIds: number[], page = 1): Promise<TMDBResponse> {
+    const tvGenreIds = this.toTVGenreIds(genreIds);
+    const results = await this.makeRequest<TMDBResponse>('/discover/tv', {
+      with_genres: tvGenreIds.join(','),
+      sort_by: 'popularity.desc',
+      page,
+    });
+    return {
+      ...results,
+      results: (results.results || []).map(s => ({ ...s, media_type: 'tv' as const })),
+    };
+  }
+
+  async getIndianMoviesByGenres(genreIds: number[], page = 1): Promise<TMDBResponse> {
+    const results = await this.makeRequest<TMDBResponse>('/discover/movie', {
+      with_genres: genreIds.join(','),
+      with_origin_country: 'IN',
+      sort_by: 'popularity.desc',
+      page,
+    });
+    return {
+      ...results,
+      results: (results.results || []).map(m => ({ ...m, media_type: 'movie' as const })),
+    };
+  }
+
+  async getIndianTVShowsByGenres(genreIds: number[], page = 1): Promise<TMDBResponse> {
+    const tvGenreIds = this.toTVGenreIds(genreIds);
+    const results = await this.makeRequest<TMDBResponse>('/discover/tv', {
+      with_genres: tvGenreIds.join(','),
+      with_origin_country: 'IN',
+      sort_by: 'popularity.desc',
+      page,
+    });
+    return {
+      ...results,
+      results: (results.results || []).map(s => ({ ...s, media_type: 'tv' as const })),
+    };
+  }
+
+  async getTVWatchProviders(tvId: number, region: string = 'IN'): Promise<{
+    results: Record<string, {
+      flatrate?: WatchProvider[];
+      rent?: WatchProvider[];
+      buy?: WatchProvider[];
+    }>;
+  }> {
+    return this.makeRequest(`/tv/${tvId}/watch/providers`, { watch_region: region });
+  }
+
+  /**
+   * Media-type-aware watch provider enrichment — works for both movies and TV shows.
+   * Uses /movie/{id}/watch/providers or /tv/{id}/watch/providers based on media_type.
+   */
+  async enrichWithWatchProviders(items: Movie[], region: string = 'IN'): Promise<Movie[]> {
+    if (items.length === 0) return items;
+
+    const BATCH_SIZE = 5;
+    const providersMap = new Map<number, { flatrate?: WatchProvider[]; rent?: WatchProvider[]; buy?: WatchProvider[] }>();
+
+    for (let i = 0; i < items.length; i += BATCH_SIZE) {
+      const batch = items.slice(i, i + BATCH_SIZE);
+      await Promise.all(
+        batch.map(async (item) => {
+          try {
+            const endpoint = item.media_type === 'tv'
+              ? `/tv/${item.id}/watch/providers`
+              : `/movie/${item.id}/watch/providers`;
+            const data = await this.makeRequest<{
+              results: Record<string, { flatrate?: WatchProvider[]; rent?: WatchProvider[]; buy?: WatchProvider[] }>;
+            }>(endpoint, { watch_region: region });
+            const regionData = data.results?.[region];
+            providersMap.set(item.id, {
+              flatrate: regionData?.flatrate || [],
+              rent: regionData?.rent || [],
+              buy: regionData?.buy || [],
+            });
+          } catch {
+            providersMap.set(item.id, { flatrate: [], rent: [], buy: [] });
+          }
+        })
+      );
+      if (i + BATCH_SIZE < items.length) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    }
+
+    return items.map(item => {
+      const p = providersMap.get(item.id);
+      if (p && (p.flatrate?.length || p.rent?.length || p.buy?.length)) {
+        return { ...item, watch_providers: p as WatchProviders };
+      }
+      return item;
+    });
+  }
+
   async searchMovies(query: string, page = 1): Promise<TMDBResponse> {
     return this.makeRequest<TMDBResponse>('/search/movie', {
       query,

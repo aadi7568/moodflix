@@ -4,71 +4,70 @@ import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft } from 'lucide-react';
-import MovieCard from '../../components/MovieCard';
+import TrendingCarousel from '../../components/TrendingCarousel';
 import DarkModeToggle from '../../components/DarkModeToggle';
 import { Movie } from '../../types/movie';
 import { MoodType } from '../../types/mood';
 import { MOODS } from '../../config/moods';
+
+interface RecommendationData {
+  indiaMovies: Movie[];
+  indiaTVShows: Movie[];
+  globalMovies: Movie[];
+  globalTVShows: Movie[];
+  message: string;
+}
 
 function RecommendationsContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const moodParam = searchParams.get('mood') as MoodType | null;
 
-  const [movies, setMovies] = useState<Movie[] | null>(null);
+  const [data, setData] = useState<RecommendationData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!moodParam || !MOODS[moodParam]) {
-      router.push('/');
-      return;
+  const fetchRecommendations = async (mood: MoodType) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/recommendations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ mood }),
+      });
+      const json = await response.json();
+      if (!response.ok || !json.success) throw new Error(json.error || 'Failed to load recommendations');
+      setData({
+        indiaMovies:  json.indiaMovies  || [],
+        indiaTVShows: json.indiaTVShows || [],
+        globalMovies: json.globalMovies || [],
+        globalTVShows: json.globalTVShows || [],
+        message: json.message || '',
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load recommendations');
+    } finally {
+      setLoading(false);
     }
+  };
 
-    const fetchRecommendations = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-
-        const response = await fetch('/api/recommendations', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          credentials: 'include',
-          body: JSON.stringify({ mood: moodParam }),
-        });
-
-        const data = await response.json();
-
-        if (!response.ok || !data.success) {
-          throw new Error(data.error || 'Failed to load recommendations');
-        }
-
-        const moodMovies = data.movies || [];
-        setMovies(moodMovies);
-      } catch (err) {
-        console.error('Error fetching recommendations:', err);
-        setError(err instanceof Error ? err.message : 'Failed to load recommendations');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchRecommendations();
+  useEffect(() => {
+    if (!moodParam || !MOODS[moodParam]) { router.push('/'); return; }
+    fetchRecommendations(moodParam);
   }, [moodParam, router]);
 
   const selectedMood = moodParam ? MOODS[moodParam] : null;
+  const hasContent = data && (
+    data.indiaMovies.length > 0 || data.indiaTVShows.length > 0 ||
+    data.globalMovies.length > 0 || data.globalTVShows.length > 0
+  );
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 relative">
-      {/* Dark Mode Toggle */}
       <div className="fixed top-3 right-3 sm:top-4 sm:right-4 md:top-6 md:right-6 z-50">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.3 }}
-        >
+        <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.3 }}>
           <DarkModeToggle />
         </motion.div>
       </div>
@@ -99,6 +98,9 @@ function RecommendationsContent() {
               </p>
             </div>
           )}
+          {data?.message && (
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">{data.message}</p>
+          )}
         </motion.div>
 
         {/* Results */}
@@ -106,9 +108,7 @@ function RecommendationsContent() {
           {loading && (
             <motion.div
               key="loading"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="flex flex-col items-center justify-center py-16"
             >
               <div className="w-16 h-16 border-4 border-gray-300 dark:border-gray-600 border-t-blue-500 rounded-full animate-spin mb-4" />
@@ -121,42 +121,13 @@ function RecommendationsContent() {
           {error && (
             <motion.div
               key="error"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
+              initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
               className="bg-red-50 dark:bg-red-900/20 border border-red-300 dark:border-red-800 rounded-xl p-6 text-center"
             >
-              <h3 className="text-lg font-semibold text-red-800 dark:text-red-400 mb-2">
-                Oops! Something went wrong
-              </h3>
+              <h3 className="text-lg font-semibold text-red-800 dark:text-red-400 mb-2">Oops! Something went wrong</h3>
               <p className="text-red-600 dark:text-red-300 mb-4">{error}</p>
               <button
-                onClick={() => {
-                  if (moodParam) {
-                    setError(null);
-                    setLoading(true);
-                    fetch('/api/recommendations', {
-                      method: 'POST',
-                      headers: {
-                        'Content-Type': 'application/json',
-                      },
-                      credentials: 'include',
-                      body: JSON.stringify({ mood: moodParam }),
-                    })
-                      .then((res) => res.json())
-                      .then((data) => {
-                        if (data.success) {
-                          setMovies(data.movies || []);
-                        } else {
-                          setError(data.error || 'Failed to load recommendations');
-                        }
-                      })
-                      .catch((err) => {
-                        setError(err.message || 'Failed to load recommendations');
-                      })
-                      .finally(() => setLoading(false));
-                  }
-                }}
+                onClick={() => moodParam && fetchRecommendations(moodParam)}
                 className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
               >
                 Try Again
@@ -164,38 +135,44 @@ function RecommendationsContent() {
             </motion.div>
           )}
 
-          {!loading && !error && movies && movies.length > 0 && (
+          {!loading && !error && hasContent && (
             <motion.div
               key="results"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{ duration: 0.5 }}
+              initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.5 }}
+              className="space-y-12"
             >
-              <p className="text-gray-600 dark:text-gray-400 mb-6">
-                We found {movies.length} perfect match{movies.length !== 1 ? 'es' : ''} for your {selectedMood?.label.toLowerCase()} mood
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                {movies.map((movie, index) => (
-                  <motion.div
-                    key={movie.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.4, delay: index * 0.1 }}
-                  >
-                    <MovieCard movie={movie} />
-                  </motion.div>
-                ))}
-              </div>
+              {data!.indiaMovies.length > 0 && (
+                <TrendingCarousel
+                  items={data!.indiaMovies}
+                  title={`Indian Movies — ${selectedMood?.label} Mood`}
+                />
+              )}
+              {data!.indiaTVShows.length > 0 && (
+                <TrendingCarousel
+                  items={data!.indiaTVShows}
+                  title={`Indian TV Shows — ${selectedMood?.label} Mood`}
+                />
+              )}
+              {data!.globalMovies.length > 0 && (
+                <TrendingCarousel
+                  items={data!.globalMovies}
+                  title={`Global Movies — ${selectedMood?.label} Mood`}
+                />
+              )}
+              {data!.globalTVShows.length > 0 && (
+                <TrendingCarousel
+                  items={data!.globalTVShows}
+                  title={`Global TV Shows — ${selectedMood?.label} Mood`}
+                />
+              )}
             </motion.div>
           )}
 
-          {!loading && !error && movies && movies.length === 0 && (
+          {!loading && !error && !hasContent && (
             <motion.div
               key="empty"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-8 text-center"
             >
               <p className="text-lg text-gray-600 dark:text-gray-400">
@@ -222,4 +199,3 @@ export default function RecommendationsPage() {
     </Suspense>
   );
 }
-
