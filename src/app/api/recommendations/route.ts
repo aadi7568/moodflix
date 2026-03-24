@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
     const genreSet = new Set(genreIds);
 
     // Global movies: genre discover + trending blended, then AI-reranked
-    let globalMoviesPool = buildPool([...globalMoviesRaw, ...trendingMovies], genreSet, 30);
+    const globalMoviesPool = buildPool([...globalMoviesRaw, ...trendingMovies], genreSet, 30);
 
     // India movies: origin country IN, filtered by mood genres
     const indiaMoviesPool  = buildPool(indiaMoviesRaw,  genreSet, 20);
