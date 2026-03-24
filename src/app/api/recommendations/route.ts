@@ -13,28 +13,30 @@ import { z } from 'zod';
 
 export const dynamic = 'force-dynamic';
 
-// Feature flag to enable/disable AI re-ranking
-const ENABLE_AI_RERANKING = process.env.ENABLE_AI_RERANKING !== 'false'; // Default to true if not explicitly disabled
-const AI_RERANKING_TIMEOUT = 30000; // 30 seconds timeout for AI analysis
+const ENABLE_AI_RERANKING = process.env.ENABLE_AI_RERANKING !== 'false';
+const AI_RERANKING_TIMEOUT = 30000;
+
+/** Deduplicate, filter by mood genres, sort by vote_average desc, take top N */
+function buildPool(items: Movie[], genreIds: Set<number>, limit: number): Movie[] {
+  const seen = new Set<number>();
+  const unique = items.filter(m => { if (seen.has(m.id)) return false; seen.add(m.id); return true; });
+  const relevant = unique.filter(m => m.genre_ids?.some(id => genreIds.has(id)));
+  const pool = relevant.length > 0 ? relevant : unique;
+  return pool
+    .sort((a, b) => b.vote_average - a.vote_average || b.vote_count - a.vote_count)
+    .slice(0, limit);
+}
 
 export async function POST(request: NextRequest) {
-  // Rate limiting with anonymous session tokens
   const rateLimitResult = await rateLimitMiddleware(request, 'recommendations');
-  if (!rateLimitResult.success) {
-    return rateLimitResult.response!;
-  }
+  if (!rateLimitResult.success) return rateLimitResult.response!;
 
-  // Get or create anonymous session token
   const { token, isNew } = await getOrCreateSessionToken(request);
 
   try {
-    // Validate request body size
     const bodyText = await request.text();
-    validateBodySize(bodyText, 10240); // 10KB max
-    
+    validateBodySize(bodyText, 10240);
     const body = JSON.parse(bodyText);
-    
-    // Validate with Zod schema
     const validated = recommendationsSchema.parse(body);
     const { mood, preferences, parsedMoodInfo } = validated;
 
@@ -42,248 +44,128 @@ export async function POST(request: NextRequest) {
     const moodConfig = MOODS[moodType];
 
     if (!moodConfig) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Mood configuration not found',
-        },
-        { status: 404 }
-      );
+      return NextResponse.json({ success: false, error: 'Mood configuration not found' }, { status: 404 });
     }
 
-    // Fetch movies by genre preferences
-    let genreMovies: Movie[] = [];
-    try {
-      const genreResponse = await tmdbService.getMoviesByGenres(
-        moodConfig.genrePreferences,
-        1
-      );
-      genreMovies = genreResponse.results || [];
-    } catch (error) {
-      console.error('Error fetching movies by genres:', error);
-      // Continue with trending movies if genre fetch fails
-    }
+    const genreIds = moodConfig.genrePreferences;
 
-    // Fetch trending movies
-    let trendingMovies: Movie[] = [];
-    try {
-      const trendingResponse = await tmdbService.getTrending('movie', 'day');
-      trendingMovies = trendingResponse.results || [];
-    } catch (error) {
-      console.error('Error fetching trending movies:', error);
-      // If both fail, try to get at least some trending content
-      try {
-        const fallbackResponse = await tmdbService.getTrending('all', 'week');
-        trendingMovies = fallbackResponse.results || [];
-      } catch (fallbackError) {
-        console.error('Fallback trending fetch also failed:', fallbackError);
-      }
-    }
+    // ── Fetch all 4 pools in parallel ──────────────────────────────────────────
+    const [
+      globalMoviesRes,
+      globalTVRes,
+      indiaMoviesRes,
+      indiaTVRes,
+      globalTrendingRes,
+    ] = await Promise.allSettled([
+      tmdbService.getMoviesByGenres(genreIds, 1),
+      tmdbService.getTVShowsByGenres(genreIds, 1),
+      tmdbService.getIndianMoviesByGenres(genreIds, 1),
+      tmdbService.getIndianTVShowsByGenres(genreIds, 1),
+      tmdbService.getTrending('movie', 'day'),
+    ]);
 
-    // Combine and deduplicate movies by ID
-    const movieMap = new Map<number, Movie>();
+    const globalMoviesRaw  = globalMoviesRes.status  === 'fulfilled' ? (globalMoviesRes.value.results  || []) : [];
+    const globalTVRaw      = globalTVRes.status      === 'fulfilled' ? (globalTVRes.value.results      || []) : [];
+    const indiaMoviesRaw   = indiaMoviesRes.status   === 'fulfilled' ? (indiaMoviesRes.value.results   || []) : [];
+    const indiaTVRaw       = indiaTVRes.status       === 'fulfilled' ? (indiaTVRes.value.results       || []) : [];
+    const trendingMovies   = globalTrendingRes.status === 'fulfilled' ? (globalTrendingRes.value.results || []) : [];
 
-    // Add genre-based movies first (higher priority)
-    genreMovies.forEach((movie) => {
-      if (!movieMap.has(movie.id)) {
-        movieMap.set(movie.id, movie);
-      }
-    });
+    const genreSet = new Set(genreIds);
 
-    // Add trending movies
-    trendingMovies.forEach((movie) => {
-      if (!movieMap.has(movie.id)) {
-        movieMap.set(movie.id, movie);
-      }
-    });
+    // Global movies: genre discover + trending blended, then AI-reranked
+    let globalMoviesPool = buildPool([...globalMoviesRaw, ...trendingMovies], genreSet, 30);
 
-    // Convert map to array
-    const allMovies = Array.from(movieMap.values());
+    // India movies: origin country IN, filtered by mood genres
+    const indiaMoviesPool  = buildPool(indiaMoviesRaw,  genreSet, 20);
 
-    // Filter movies that match genre preferences
-    const genreIds = new Set(moodConfig.genrePreferences);
-    const relevantMovies = allMovies.filter((movie) =>
-      movie.genre_ids?.some((id) => genreIds.has(id))
-    );
+    // TV shows: no AI reranking — sort by vote_average
+    const globalTVPool     = buildPool(globalTVRaw,  genreSet, 20);
+    const indiaTVPool      = buildPool(indiaTVRaw,   genreSet, 20);
 
-    // If we have relevant movies, use them; otherwise use all movies
-    const moviesToSort = relevantMovies.length > 0 ? relevantMovies : allMovies;
-    
-    // If still no movies, return error
-    if (moviesToSort.length === 0) {
-      console.error('No movies found for mood:', moodType);
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'No recommendations found. Please try again or select a different mood.',
-          movies: [],
-        },
-        { status: 200 }
-      );
-    }
-
-    // Limit to top 30 for AI analysis (to avoid excessive API calls)
-    const moviesForAnalysis = moviesToSort.slice(0, 30);
-
-    let sortedMovies: Movie[] = [];
-    let emotionalMatchScores: Array<{ movieId: number; score: number; reasoning: string }> | undefined;
+    // ── AI re-ranking on global movies only ───────────────────────────────────
+    let sortedGlobalMovies: Movie[] = globalMoviesPool;
     let usedAIReranking = false;
 
-    // Attempt AI re-ranking if enabled
-    if (ENABLE_AI_RERANKING) {
+    if (ENABLE_AI_RERANKING && globalMoviesPool.length > 0) {
       try {
-        // Fetch movie details for better emotional analysis (only for movies we'll analyze)
         let movieDetailsMap: Map<number, MovieDetails> | undefined;
         try {
-          const movieIds = moviesForAnalysis.map(m => m.id);
           movieDetailsMap = await Promise.race([
-            tmdbService.getMoviesDetailsBatch(movieIds, 100),
+            tmdbService.getMoviesDetailsBatch(globalMoviesPool.map(m => m.id), 100),
             new Promise<Map<number, MovieDetails>>((_, reject) =>
               setTimeout(() => reject(new Error('Timeout')), 10000)
             ),
           ]) as Map<number, MovieDetails>;
-        } catch (error) {
-          console.warn('Error fetching movie details for AI analysis, continuing without:', error);
-          // Continue without movie details
-        }
+        } catch { /* continue without details */ }
 
-        // Perform AI re-ranking with timeout
-        const rerankingPromise = aiService.reRankMoviesByMood(
-          moviesForAnalysis,
-          moodType,
-          movieDetailsMap
-        );
-
-        const rerankedResults = await Promise.race([
-          rerankingPromise,
+        const reranked = await Promise.race([
+          aiService.reRankMoviesByMood(globalMoviesPool, moodType, movieDetailsMap),
           new Promise<Array<{ movie: Movie; score: number; reasoning: string }>>((_, reject) =>
             setTimeout(() => reject(new Error('AI re-ranking timeout')), AI_RERANKING_TIMEOUT)
           ),
         ]);
 
-        sortedMovies = rerankedResults.map(result => result.movie);
-        emotionalMatchScores = rerankedResults.map(result => ({
-          movieId: result.movie.id,
-          score: result.score,
-          reasoning: result.reasoning,
-        }));
+        sortedGlobalMovies = reranked.map(r => r.movie);
         usedAIReranking = true;
-
-        const avgScore = emotionalMatchScores.reduce((sum, s) => sum + s.score, 0) / emotionalMatchScores.length;
-        console.log(`AI re-ranking completed for ${sortedMovies.length} movies (avg score: ${avgScore.toFixed(1)})`);
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        console.warn(`AI re-ranking failed (${errorMessage}), falling back to genre-based sorting`);
-        // Fall through to genre-based sorting
-        usedAIReranking = false;
+      } catch {
+        // fall through to vote-average sort (already done in buildPool)
       }
     }
 
-    // Fallback to genre-based sorting if AI re-ranking wasn't used or failed
-    if (!usedAIReranking) {
-      sortedMovies = moviesToSort.sort((a, b) => {
-        // Primary sort: vote_average
-        if (b.vote_average !== a.vote_average) {
-          return b.vote_average - a.vote_average;
-        }
-        // Secondary sort: vote_count
-        return b.vote_count - a.vote_count;
-      });
-    }
+    const topGlobalMovies = sortedGlobalMovies.slice(0, 20);
+    const topGlobalTV     = globalTVPool.slice(0, 20);
+    const topIndiaMovies  = indiaMoviesPool.slice(0, 20);
+    const topIndiaTV      = indiaTVPool.slice(0, 20);
 
-    // Get top 20 movies
-    const topMovies = sortedMovies.slice(0, 20);
+    // ── Enrich all 4 pools with watch providers in parallel ───────────────────
+    const [enrichedGlobalMovies, enrichedGlobalTV, enrichedIndiaMovies, enrichedIndiaTV] = await Promise.all([
+      tmdbService.enrichMoviesWithWatchProviders(topGlobalMovies, 'IN'),
+      tmdbService.enrichWithWatchProviders(topGlobalTV, 'IN'),
+      tmdbService.enrichMoviesWithWatchProviders(topIndiaMovies, 'IN'),
+      tmdbService.enrichWithWatchProviders(topIndiaTV, 'IN'),
+    ]);
 
-    // Generate explanation message
-    const message = preferences
-      ? `Based on your ${moodConfig.label.toLowerCase()} mood and preferences, here are personalized recommendations.`
-      : usedAIReranking
-      ? `Based on your ${moodConfig.label.toLowerCase()} mood, here are ${topMovies.length} AI-curated recommendations that match your emotional tone.`
-      : `Based on your ${moodConfig.label.toLowerCase()} mood, here are ${topMovies.length} carefully curated recommendations that match your current vibe.`;
+    const message = usedAIReranking
+      ? `AI-curated picks for your ${moodConfig.label.toLowerCase()} mood — Indian & global movies and shows.`
+      : `Curated for your ${moodConfig.label.toLowerCase()} mood — Indian & global movies and shows.`;
 
-    // Enrich movies with watch providers
-    const enrichedMovies = await tmdbService.enrichMoviesWithWatchProviders(topMovies, 'IN');
-
-    interface RecommendationApiResponse {
-      success: boolean;
-      mood: MoodType;
-      movies: Movie[];
-      message: string;
-      count: number;
-      preferences?: string[];
-      parsedMoodInfo?: typeof parsedMoodInfo;
-      emotionalMatchScores?: Array<{ movieId: number; score: number; reasoning: string }>;
-      usedAIReranking?: boolean;
-    }
-
-    const response: RecommendationApiResponse = {
+    const response = {
       success: true,
       mood: moodType,
-      movies: enrichedMovies,
       message,
-      count: enrichedMovies.length,
+      // India-specific
+      indiaMovies: enrichedIndiaMovies,
+      indiaTVShows: enrichedIndiaTV,
+      // Global
+      globalMovies: enrichedGlobalMovies,
+      globalTVShows: enrichedGlobalTV,
+      // Legacy field so existing clients don't break
+      movies: enrichedGlobalMovies,
+      count: enrichedGlobalMovies.length,
+      ...(preferences?.length ? { preferences } : {}),
+      ...(parsedMoodInfo ? { parsedMoodInfo } : {}),
     };
 
-    // Store preferences for future filtering implementation
-    if (preferences && Array.isArray(preferences) && preferences.length > 0 && preferences.length <= 20) {
-      response.preferences = preferences;
-      // Only log in development
-      if (process.env.NODE_ENV === 'development') {
-        console.log('User preferences stored:', preferences);
-      }
-    }
-
-    // Include parsed mood info if available
-    if (parsedMoodInfo) {
-      response.parsedMoodInfo = parsedMoodInfo;
-    }
-
-    // Include emotional match scores if available (only in development with explicit flag)
-    const ENABLE_DEBUG_DATA = process.env.ENABLE_DEBUG_DATA === 'true';
-    if (emotionalMatchScores && ENABLE_DEBUG_DATA) {
-      response.emotionalMatchScores = emotionalMatchScores;
-      response.usedAIReranking = usedAIReranking;
-    }
-
-    // Create response with session token and rate limit headers
     const httpResponse = NextResponse.json(response, { status: 200 });
-
-    // Set cookie if new token was created
     if (isNew) {
       const cookie = setSessionTokenCookie(token);
       httpResponse.cookies.set(cookie.name, cookie.value, cookie.options);
-      // Also include in header for client-side storage fallback
       httpResponse.headers.set('x-session-token', token);
     }
-
-    // Add rate limit headers
     if (rateLimitResult.remaining !== undefined && rateLimitResult.reset !== undefined) {
       httpResponse.headers.set('X-RateLimit-Remaining', rateLimitResult.remaining.toString());
       httpResponse.headers.set('X-RateLimit-Reset', rateLimitResult.reset.toString());
     }
-
     return httpResponse;
+
   } catch (error) {
-    // Handle validation errors separately
     if (error instanceof z.ZodError) {
       return NextResponse.json(
-        {
-          success: false,
-          error: 'Invalid request data',
-          details: process.env.NODE_ENV === 'development' ? error.issues : undefined,
-        },
+        { success: false, error: 'Invalid request data', details: process.env.NODE_ENV === 'development' ? error.issues : undefined },
         { status: 400 }
       );
     }
-
     const { message, status } = handleApiError(error, 'recommendations', 'Failed to generate recommendations');
-    return NextResponse.json(
-      {
-        success: false,
-        error: message,
-      },
-      { status }
-    );
+    return NextResponse.json({ success: false, error: message }, { status });
   }
 }
-
