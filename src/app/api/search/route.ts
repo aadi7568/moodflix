@@ -12,159 +12,171 @@ import { z } from 'zod';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(request: NextRequest) {
-  // Rate limiting with anonymous session tokens
-  const rateLimitResult = await rateLimitMiddleware(request, 'search');
-  if (!rateLimitResult.success) {
-    return rateLimitResult.response!;
-  }
+/** Deduplicate movies by id, excluding a set of already-seen ids */
+function dedupe(movies: Movie[], exclude: Set<number> = new Set()): Movie[] {
+  const seen = new Set(exclude);
+  return movies.filter(m => { if (seen.has(m.id)) return false; seen.add(m.id); return true; });
+}
 
-  // Get or create anonymous session token
+/** Enrich a list with IMDb IDs + watch providers in one parallel pass */
+async function enrich(movies: Movie[]): Promise<Movie[]> {
+  if (movies.length === 0) return movies;
+  const ids = movies.map(m => m.id);
+  const [externalIds, withProviders] = await Promise.all([
+    tmdbService.getMoviesExternalIdsBatch(ids, 100),
+    tmdbService.enrichMoviesWithWatchProviders(movies, 'IN'),
+  ]);
+  return withProviders.map(movie => {
+    const ext = externalIds.get(movie.id);
+    const imdbId = ext?.imdb_id ?? null;
+    return { ...movie, imdb_id: imdbId, imdb_url: buildImdbUrl(imdbId) };
+  });
+}
+
+export async function GET(request: NextRequest) {
+  const rateLimitResult = await rateLimitMiddleware(request, 'search');
+  if (!rateLimitResult.success) return rateLimitResult.response!;
+
   const { token, isNew } = await getOrCreateSessionToken(request);
 
   try {
-    const searchParams = request.nextUrl.searchParams;
-    const query = searchParams.get('query');
-
-    // Validate with Zod schema
+    const query = request.nextUrl.searchParams.get('query');
     const validated = searchQuerySchema.parse({ query: query || '' });
-    const trimmedQuery = validated.query.trim();
-    
-    // Sanitize query before using
-    const sanitizedQuery = sanitizeSearchQuery(trimmedQuery, 200);
+    const sanitizedQuery = sanitizeSearchQuery(validated.query.trim(), 200);
 
-    // Classify search intent using AI
     const intentResult = await searchInterpreter.classifyIntent(sanitizedQuery);
-    
-    let movies: Movie[] = [];
-    let searchType: 'specific' | 'similar' | 'generic' = 'generic';
+    const { intent } = intentResult;
 
-    try {
-      // Handle different intent types
-      if (intentResult.intent === 'similar_movies' && intentResult.movieTitle) {
-        // User wants movies similar to a specific movie
-        searchType = 'similar';
-        
-        // First, search for the movie they mentioned
-        const movieSearchResponse = await tmdbService.searchMovies(intentResult.movieTitle, 1);
-        const matchingMovies = movieSearchResponse.results || [];
-        
-        if (matchingMovies.length > 0) {
-          // Use the first result as the reference movie
-          const referenceMovie = matchingMovies[0];
-          
-          // Get similar movies (limit to 10 as specified)
-          const similarResponse = await tmdbService.getSimilarMovies(referenceMovie.id, 1);
-          movies = (similarResponse.results || []).slice(0, 10);
-        } else {
-          // Movie not found, fallback to direct search
-          const fallbackResponse = await tmdbService.searchMovies(sanitizedQuery, 1);
-          movies = fallbackResponse.results || [];
-        }
-      } else if (intentResult.intent === 'specific_movie') {
-        // User is searching for a specific movie
-        searchType = 'specific';
-        const searchResponse = await tmdbService.searchMovies(sanitizedQuery, 1);
-        movies = searchResponse.results || [];
-      } else {
-        // Generic search (fallback or default)
-        searchType = 'generic';
-        const searchResponse = await tmdbService.searchMovies(sanitizedQuery, 1);
-        movies = searchResponse.results || [];
-      }
+    // ── Resolve reference movie for specific/similar intents ─────────────────
+    let exactMatch: Movie | null = null;
+    let referenceMovie: Movie | null = null;
 
-      // Fetch IMDb IDs and watch providers for all movies in batch
-      if (movies.length > 0) {
-        const movieIds = movies.map(m => m.id);
-        const [externalIdsMap, enrichedMovies] = await Promise.all([
-          tmdbService.getMoviesExternalIdsBatch(movieIds, 100),
-          tmdbService.enrichMoviesWithWatchProviders(movies, 'IN'),
-        ]);
-        
-        // Enrich movies with IMDb IDs and URLs (watch providers already added)
-        movies = enrichedMovies.map(movie => {
-          const externalIds = externalIdsMap.get(movie.id);
-          const imdbId = externalIds?.imdb_id || null;
-          const imdbUrl = buildImdbUrl(imdbId);
-          
-          return {
-            ...movie,
-            imdb_id: imdbId,
-            imdb_url: imdbUrl,
-          };
-        });
+    if (intent === 'specific_movie' || intent === 'similar_movies') {
+      const searchTitle = intent === 'similar_movies' && intentResult.movieTitle
+        ? intentResult.movieTitle
+        : sanitizedQuery;
+      const searchRes = await tmdbService.searchMovies(searchTitle, 1);
+      const results = searchRes.results || [];
+      if (results.length > 0) {
+        referenceMovie = results[0];
+        if (intent === 'specific_movie') exactMatch = referenceMovie;
       }
-    } catch (error) {
-      const { message } = handleApiError(error, 'search', 'Failed to search movies. Please try again.');
-      return NextResponse.json(
-        {
-          success: false,
-          error: message,
-          movies: [],
-        },
-        { status: 500 }
-      );
     }
 
-    // Create response with session token and rate limit headers
-    const response = NextResponse.json(
+    // ── Fetch all sections in parallel ───────────────────────────────────────
+    const genreIds: number[] = referenceMovie?.genre_ids ?? [];
+
+    const [
+      similarRes,
+      recommendationsRes,
+      indiaTrendingRes,
+      globalTrendingRes,
+      genericSearchRes,
+    ] = await Promise.allSettled([
+      // Similar movies (TMDB keyword/genre matching)
+      referenceMovie
+        ? tmdbService.getSimilarMovies(referenceMovie.id, 1)
+        : Promise.resolve(null),
+      // TMDB curated recommendations (user-behaviour based — higher quality)
+      referenceMovie
+        ? tmdbService.getMovieRecommendations(referenceMovie.id, 1)
+        : Promise.resolve(null),
+      // India trending filtered to same genres as reference movie
+      genreIds.length > 0
+        ? tmdbService.getIndianMoviesByGenres(genreIds, 1)
+        : tmdbService.getIndiaTrendingMovies(10),
+      // Global trending filtered to same genres
+      genreIds.length > 0
+        ? tmdbService.getMoviesByGenres(genreIds, 1)
+        : tmdbService.getGlobalTrending(10),
+      // Raw search results (always fetch for generic intent fallback)
+      tmdbService.searchMovies(sanitizedQuery, 1),
+    ]);
+
+    const similarRaw        = similarRes.status        === 'fulfilled' && similarRes.value        ? (similarRes.value.results        || []) : [];
+    const recommendationsRaw = recommendationsRes.status === 'fulfilled' && recommendationsRes.value ? (recommendationsRes.value.results || []) : [];
+    const indiaTrendingRaw  = indiaTrendingRes.status  === 'fulfilled'
+      ? (Array.isArray(indiaTrendingRes.value) ? indiaTrendingRes.value : (indiaTrendingRes.value as {results?: Movie[]}).results || [])
+      : [];
+    const globalTrendingRaw = globalTrendingRes.status === 'fulfilled'
+      ? (Array.isArray(globalTrendingRes.value)
+          ? globalTrendingRes.value
+          : ((globalTrendingRes.value as {movies?: Movie[], results?: Movie[]}).movies
+             || (globalTrendingRes.value as {results?: Movie[]}).results
+             || []))
+      : [];
+    const genericSearchRaw  = genericSearchRes.status  === 'fulfilled' ? (genericSearchRes.value.results || []) : [];
+
+    // ── Build sections, excluding exactMatch from everything else ─────────────
+    const excludeIds = new Set(exactMatch ? [exactMatch.id] : []);
+
+    // Blend /similar + /recommendations, deduplicated, top 15
+    const blendedSimilar = dedupe(
+      [...recommendationsRaw, ...similarRaw],
+      excludeIds
+    ).slice(0, 15);
+
+    const indiaTrending  = dedupe(indiaTrendingRaw, new Set([...Array.from(excludeIds), ...blendedSimilar.map(m => m.id)])).slice(0, 10);
+    const globalTrending = dedupe(globalTrendingRaw, new Set([...Array.from(excludeIds), ...blendedSimilar.map(m => m.id), ...indiaTrending.map(m => m.id)])).slice(0, 10);
+    const searchResults  = dedupe(genericSearchRaw, excludeIds).slice(0, 10);
+
+    // ── Enrich all sections in parallel ──────────────────────────────────────
+    const [
+      enrichedExact,
+      enrichedSimilar,
+      enrichedIndia,
+      enrichedGlobal,
+      enrichedSearch,
+    ] = await Promise.all([
+      exactMatch ? enrich([exactMatch]) : Promise.resolve([]),
+      enrich(blendedSimilar),
+      enrich(indiaTrending),
+      enrich(globalTrending),
+      intent === 'generic_search' ? enrich(searchResults) : Promise.resolve(searchResults),
+    ]);
+
+    // ── Response ──────────────────────────────────────────────────────────────
+    const httpResponse = NextResponse.json(
       {
         success: true,
-        movies,
-        count: movies.length,
         query: sanitizedQuery,
-        intent: intentResult.intent,
-        searchType,
-        // Include intent metadata in development mode
-        ...(process.env.NODE_ENV === 'development' && {
-          intentMetadata: {
-            confidence: intentResult.confidence,
-            reasoning: intentResult.reasoning,
-            extractedTitle: intentResult.movieTitle,
-          },
-        }),
+        intent,
+        searchType: intent === 'similar_movies' ? 'similar' : intent === 'specific_movie' ? 'specific' : 'generic',
+        exactMatch:     enrichedExact[0]   ?? null,
+        similarMovies:  enrichedSimilar,
+        trendingInIndia: enrichedIndia,
+        globalTrending:  enrichedGlobal,
+        searchResults:   enrichedSearch,
+        // Legacy field so existing consumers don't break
+        movies: enrichedExact[0]
+          ? [enrichedExact[0], ...enrichedSimilar]
+          : intent === 'generic_search'
+          ? enrichedSearch
+          : enrichedSimilar,
+        count: enrichedSimilar.length,
       },
       { status: 200 }
     );
 
-    // Set cookie if new token was created
     if (isNew) {
       const cookie = setSessionTokenCookie(token);
-      response.cookies.set(cookie.name, cookie.value, cookie.options);
-      // Also include in header for client-side storage fallback
-      response.headers.set('x-session-token', token);
+      httpResponse.cookies.set(cookie.name, cookie.value, cookie.options);
+      httpResponse.headers.set('x-session-token', token);
     }
-
-    // Add rate limit headers
     if (rateLimitResult.remaining !== undefined && rateLimitResult.reset !== undefined) {
-      response.headers.set('X-RateLimit-Remaining', rateLimitResult.remaining.toString());
-      response.headers.set('X-RateLimit-Reset', rateLimitResult.reset.toString());
+      httpResponse.headers.set('X-RateLimit-Remaining', rateLimitResult.remaining.toString());
+      httpResponse.headers.set('X-RateLimit-Reset', rateLimitResult.reset.toString());
     }
+    return httpResponse;
 
-    return response;
   } catch (error) {
-    // Handle validation errors separately
     if (error instanceof z.ZodError) {
       return NextResponse.json(
-        {
-          success: false,
-          error: 'Invalid search query',
-          details: process.env.NODE_ENV === 'development' ? error.issues : undefined,
-          movies: [],
-        },
+        { success: false, error: 'Invalid search query', movies: [] },
         { status: 400 }
       );
     }
-
     const { message, status } = handleApiError(error, 'search', 'Failed to process search request');
-    return NextResponse.json(
-      {
-        success: false,
-        error: message,
-        movies: [],
-      },
-      { status }
-    );
+    return NextResponse.json({ success: false, error: message, movies: [] }, { status });
   }
 }
-
