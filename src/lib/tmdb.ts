@@ -280,6 +280,16 @@ class TMDBService {
   }
 
   /**
+   * TMDB curated recommendations for a movie (higher quality than /similar).
+   * Uses user behaviour data — tends to return more thematically aligned picks.
+   */
+  async getMovieRecommendations(movieId: number, page: number = 1): Promise<TMDBResponse> {
+    return this.makeRequest<TMDBResponse>(`/movie/${movieId}/recommendations`, {
+      page,
+    });
+  }
+
+  /**
    * Get external IDs (including IMDb ID) for a movie
    * @param movieId - The TMDB movie ID
    * @returns External IDs object with imdb_id and other IDs
